@@ -5,8 +5,12 @@ from pathlib import Path
 
 import streamlit as st
 
-from .orchestrator import Orchestrator
-from .repository import DataRepository
+try:
+    from .orchestrator import Orchestrator
+    from .repository import DataRepository
+except ImportError:
+    from healthcare_support_agents.orchestrator import Orchestrator
+    from healthcare_support_agents.repository import DataRepository
 
 
 def load_orchestrator() -> tuple[Orchestrator, DataRepository]:
