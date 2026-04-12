@@ -1,0 +1,16 @@
+[
+  {
+    "discharge_plan_id": "DP-1001",
+    "patient_id": "PT-1001",
+    "summary": "Discharged after congestive heart failure stabilization with medication adjustment.",
+    "clinical_note": "Take furosemide 20 mg by mouth every morning. Check weight after waking and before breakfast. If weight increases by more than 2 pounds in 24 hours, call cardiology. Limit sodium to less than 2 grams daily. Mild fatigue can occur for one week. Seek urgent care for chest pain, trouble breathing at rest, fainting, or new confusion.",
+    "daily_routine": "Wakes at 7:00 AM, eats breakfast at 8:00 AM, afternoon walk at 2:00 PM, bedtime at 9:30 PM."
+  },
+  {
+    "discharge_plan_id": "DP-2002",
+    "patient_id": "PT-2002",
+    "summary": "Discharged after cellulitis treatment with oral antibiotics and mobility precautions.",
+    "clinical_note": "Take cephalexin 500 mg four times daily for 7 days. Keep the leg elevated while seated. Mild redness may improve slowly, but spreading redness, fever above 100.4 F, or worsening swelling needs same-day review. Use the walker for all transfers to reduce fall risk.",
+    "daily_routine": "Wakes at 6:30 AM, breakfast at 7:30 AM, lunch at 12:30 PM, dinner at 6:00 PM, bedtime at 10:00 PM."
+  }
+]

@@ -1,0 +1,50 @@
+discharge_translation:
+  description: >
+    Use Watson Discovery-style processing to analyze the unstructured clinical
+    discharge plan for the patient {patient_id}. Extract all critical recovery
+    details, medication schedules, and safety warnings. Translate this jargon-heavy
+    data into a simplified, personalized daily checklist that matches the user's
+    daily routine.
+  expected_output: >
+    A simplified, actionable daily recovery checklist and personalized safety
+    guide extracted from unstructured clinical notes.
+  agent: translator_agent
+
+risk_monitoring:
+  description: >
+    Continuously monitor the incoming {symptom_report} and real-time biometric
+    data. Use predictive reasoning to evaluate health trends and distinguish
+    between routine recovery symptoms and high-priority health shifts that
+    indicate a medical complication.
+  expected_output: >
+    A health status evaluation report including risk triage levels and
+    automated notifications for health declines.
+  agent: monitoring_agent
+
+logistical_coordination:
+  description: >
+    Perform an automated "handshake" between the {care_plan} and local
+    pharmacy systems. Identify any delays in medication acquisition and locate
+    alternative nearby sources to prevent missed doses. Additionally,
+    synchronize with transportation systems to schedule follow-up specialist
+    appointments.
+  expected_output: >
+    A coordination plan confirming medication adherence status and
+    scheduled appointments with resolved logistical hurdles.
+  agent: logistics_agent
+
+recovery_orchestration_task:
+  description: >
+    Synthesize the inputs from the Translator, Monitoring, and Logistics agents.
+    Develop a unified recovery summary for the medical team. Maintain a
+    transparent reasoning log for every decision made, and implement a safety
+    checkpoint to escalate the case to a human nurse if high-priority health
+    shifts are detected.
+  expected_output: >
+    A comprehensive recovery overview featuring a finalized daily checklist,
+    risk detection status, and a reasoning log for clinical staff.
+  agent: orchestrator_agent
+  context:
+    - discharge_translation
+    - risk_monitoring
+    - logistical_coordination
