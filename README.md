@@ -52,6 +52,13 @@ $env:PYTHONPATH="src"
 python -m healthcare_support_agents.app
 ```
 
+## Run the Streamlit app
+
+```powershell
+$env:PYTHONPATH="src"
+streamlit run src/healthcare_support_agents/streamlit_app.py
+```
+
 ## Example scenarios
 
 - `PT-1001` with symptom report `A little tired after walking, but no fever and breathing is normal.`
@@ -72,3 +79,7 @@ This repo is designed so the functions in [src/healthcare_support_agents/agents.
 can be adapted into IBM watsonx Orchestrate tools.
 
 The included `agents.yaml` and `tasks.yaml` mirror the healthcare care workflow you described so you can reuse them in a watsonx agent configuration.
+
+## Streamlit branch
+
+The `codex/streamlit-healthcare-ui` branch adds an interactive care-coordination dashboard on top of the same agent orchestration flow. It keeps the original command-line demo intact while adding a friendlier presentation layer for demos.
