@@ -1,85 +1,141 @@
 # healthcare_multi_agent_tutorial
 
-Standalone GitHub-ready multi-agent healthcare recovery support app inspired by IBM watsonx Orchestrate tutorial patterns.
+Healthcare multi-agent recovery app with a **true watsonx Orchestrate deployment flow**:
 
-This project simulates a healthcare care-coordination workflow by coordinating four specialized agents:
+- Tool registration into Orchestrate (ADK CLI)
+- Agent wiring/import (native agent spec)
+- Invocation path through both Orchestrate CLI chat and Orchestrate REST runs API
 
-- `orchestrator_agent`
-- `translator_agent`
-- `monitoring_agent`
-- `logistics_agent`
+The repo also includes a local deterministic orchestrator and a Streamlit demo UI.
 
-## Features
+## What is included
 
-- Converts dense discharge instructions into plain-language recovery checklists.
-- Monitors symptom reports and biometrics for escalating health risks.
-- Detects medication pickup delays and suggests alternate pharmacies.
-- Confirms follow-up appointments and transportation readiness.
-- Produces a transparent reasoning log for every care-coordination decision.
-- Escalates high-priority health shifts to a human nurse.
+- Local care orchestration stack:
+  - [orchestrator.py](src/healthcare_support_agents/orchestrator.py)
+  - [agents.py](src/healthcare_support_agents/agents.py)
+  - [connectors.py](src/healthcare_support_agents/connectors.py)
+- Orchestrate ADK tools:
+  - [orchestrate_adk_tools.py](src/healthcare_support_agents/orchestrate_adk_tools.py)
+- Orchestrate deployment automation:
+  - [orchestrate_deployment.py](src/healthcare_support_agents/orchestrate_deployment.py)
+- Agent spec for Orchestrate import:
+  - [healthcare_care_coordinator.agent.yaml](deploy/orchestrate/healthcare_care_coordinator.agent.yaml)
+- Optional watsonx tool-calling demo path:
+  - [watsonx_tool_calling_example.py](watsonx_tool_calling_example.py)
 
-## Repo layout
+## Environment setup
 
-```text
-healthcare_multi_agent_tutorial/
-|-- agents.yaml
-|-- tasks.yaml
-|-- pyproject.toml
-|-- README.md
-|-- data/
-|   |-- appointments.json
-|   |-- discharge_plans.json
-|   |-- patients.json
-|   |-- pharmacy_status.json
-|   `-- vitals.json
-|-- src/
-|   `-- healthcare_support_agents/
-|       |-- __init__.py
-|       |-- agents.py
-|       |-- app.py
-|       |-- connectors.py
-|       |-- models.py
-|       |-- orchestrator.py
-|       `-- repository.py
-`-- tests/
-    `-- test_app.py
+1. Install local package:
+
+```powershell
+pip install -e .
 ```
 
-## Run locally
+2. Copy env template:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+3. Fill required values in `.env`:
+
+```text
+WATSONX_APIKEY=your_watsonx_api_key_here
+WATSONX_PROJECT_ID=your_watsonx_project_id_here
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+WATSONX_MODEL=watsonx/ibm/granite-3-8b-instruct
+SERPER_API_KEY=your_serper_api_key_here
+
+ORCHESTRATE_INSTANCE_URL=https://your-orchestrate-instance-url
+ORCHESTRATE_API_ENDPOINT=https://your-orchestrate-instance-url
+ORCHESTRATE_API_KEY=your_orchestrate_api_key_here
+ORCHESTRATE_BEARER_TOKEN=
+ORCHESTRATE_ENV_NAME=healthcare-dev
+ORCHESTRATE_AGENT_NAME=Healthcare_Care_Coordinator
+ORCHESTRATE_AGENT_ID=
+ORCHESTRATE_AUTH_TYPE=ibm_iam
+ORCHESTRATE_IAM_URL=https://iam.cloud.ibm.com/identity/token
+```
+
+## True Orchestrate deployment flow
+
+### 1. Configure and activate ADK environment
+
+Install ADK CLI, then add/activate your Orchestrate environment:
+
+```powershell
+pip install --upgrade ibm-watsonx-orchestrate
+orchestrate env add -n healthcare-dev -u https://your-orchestrate-instance-url --type ibm_iam --activate
+```
+
+### 2. Register tools in Orchestrate
 
 ```powershell
 $env:PYTHONPATH="src"
-python -m healthcare_support_agents.app
+python -m healthcare_support_agents.orchestrate_deployment register-tools
 ```
 
-## Run the Streamlit app
+This imports [orchestrate_adk_tools.py](src/healthcare_support_agents/orchestrate_adk_tools.py) as Python tools.
+
+### 3. Wire agent (import/update)
+
+```powershell
+$env:PYTHONPATH="src"
+python -m healthcare_support_agents.orchestrate_deployment wire-agent
+```
+
+This imports [healthcare_care_coordinator.agent.yaml](deploy/orchestrate/healthcare_care_coordinator.agent.yaml), wiring the registered tools to the native Orchestrate agent.
+
+### 4A. Invoke through Orchestrate CLI chat
+
+```powershell
+$env:PYTHONPATH="src"
+python -m healthcare_support_agents.orchestrate_deployment invoke --mode cli --prompt "Review PT-1001 and summarize escalation risk."
+```
+
+### 4B. Invoke through Orchestrate REST API
+
+```powershell
+$env:PYTHONPATH="src"
+python -m healthcare_support_agents.orchestrate_deployment invoke --mode api --prompt "Review PT-1001 and summarize escalation risk."
+```
+
+The API mode posts to `/api/v1/orchestrate/runs` and polls `/api/v1/orchestrate/runs/{run_id}/events`.
+
+### One-command setup (register + wire)
+
+```powershell
+$env:PYTHONPATH="src"
+python -m healthcare_support_agents.orchestrate_deployment all
+```
+
+Or include invocation:
+
+```powershell
+$env:PYTHONPATH="src"
+python -m healthcare_support_agents.orchestrate_deployment all --invoke --mode cli --prompt "Review PT-2002 logistics blockers."
+```
+
+## Streamlit UI
 
 ```powershell
 $env:PYTHONPATH="src"
 streamlit run src/healthcare_support_agents/streamlit_app.py
 ```
 
-## Example scenarios
+If watsonx credentials are set, the UI can run live tool-calling through watsonx as an additional path.
 
-- `PT-1001` with symptom report `A little tired after walking, but no fever and breathing is normal.`
-- `PT-1001` with symptom report `I feel short of breath and dizzy this morning.`
-- `PT-2002` with symptom report `My leg is more swollen and I missed my antibiotic pickup.`
+## Tests
 
-## Behavior rules
+```powershell
+$env:PYTHONPATH="src"
+python -m unittest tests.test_app tests.test_watsonx_integration tests.test_orchestrate_deployment
+```
 
-- High-risk symptom and vital combinations escalate to a human nurse.
-- Mild recovery symptoms remain in routine monitoring with clear self-care guidance.
-- Medication delays are flagged with alternate fill options when available.
-- Appointment coordination includes transportation status and next steps.
-- Final output always includes checklist, logistics status, and reasoning log.
+## Sources
 
-## IBM watsonx alignment
-
-This repo is designed so the functions in [src/healthcare_support_agents/agents.py](src/healthcare_support_agents/agents.py)
-can be adapted into IBM watsonx Orchestrate tools.
-
-The included `agents.yaml` and `tasks.yaml` mirror the healthcare care workflow you described so you can reuse them in a watsonx agent configuration.
-
-## Streamlit branch
-
-The `codex/streamlit-healthcare-ui` branch adds an interactive care-coordination dashboard on top of the same agent orchestration flow. It keeps the original command-line demo intact while adding a friendlier presentation layer for demos.
+- [Getting started with ADK](https://developer.watson-orchestrate.ibm.com/_releases/1.15.0/getting_started/installing)
+- [Managing agents (CLI import/list/chat)](https://developer.watson-orchestrate.ibm.com/agents/manage_agent)
+- [Tool import with Python tools](https://developer.watson-orchestrate.ibm.com/connections/using_connections)
+- [Chat with Orchestrate assistant API](https://developer.watson-orchestrate.ibm.com/apis/orchestrate-agent/chat-with-orchestrate-assistant)
+- [Run events API](https://developer.watson-orchestrate.ibm.com/apis/orchestrate-agent/get-orchestrate-assistant-run-events)

@@ -41,3 +41,12 @@ class RecoverySummary:
     reasoning_log: list[str] = field(default_factory=list)
     escalated: bool = False
     details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class WatsonxResponse:
+    patient_id: str
+    final_response: str
+    tool_trace: list[dict[str, Any]] = field(default_factory=list)
+    transcript: list[dict[str, Any]] = field(default_factory=list)
+    raw_response: dict[str, Any] = field(default_factory=dict)

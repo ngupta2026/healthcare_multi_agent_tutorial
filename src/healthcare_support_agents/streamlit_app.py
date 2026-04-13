@@ -6,17 +6,36 @@ from pathlib import Path
 import streamlit as st
 
 try:
+    from .config import AppConfig
     from .orchestrator import Orchestrator
     from .repository import DataRepository
+    from .serper_client import SerperSearchClient
+    from .tool_wrappers import HealthcareToolRuntime
+    from .watsonx_client import WatsonxClient
+    from .watsonx_orchestrator import WatsonxCareOrchestrator
 except ImportError:
+    from healthcare_support_agents.config import AppConfig
     from healthcare_support_agents.orchestrator import Orchestrator
     from healthcare_support_agents.repository import DataRepository
+    from healthcare_support_agents.serper_client import SerperSearchClient
+    from healthcare_support_agents.tool_wrappers import HealthcareToolRuntime
+    from healthcare_support_agents.watsonx_client import WatsonxClient
+    from healthcare_support_agents.watsonx_orchestrator import WatsonxCareOrchestrator
 
 
 def load_orchestrator() -> tuple[Orchestrator, DataRepository]:
     repo_root = Path(__file__).resolve().parents[2]
     repository = DataRepository(repo_root / "data")
     return Orchestrator(repository), repository
+
+
+def load_watsonx_orchestrator(repository: DataRepository) -> WatsonxCareOrchestrator | None:
+    config = AppConfig.from_env()
+    if not config.watsonx_ready:
+        return None
+    search_client = SerperSearchClient(config.serper_api_key) if config.serper_ready else None
+    runtime = HealthcareToolRuntime(repository, search_client=search_client)
+    return WatsonxCareOrchestrator(WatsonxClient(config), runtime)
 
 
 def severity_label(risk_status: str) -> tuple[str, str]:
@@ -30,11 +49,13 @@ def severity_label(risk_status: str) -> tuple[str, str]:
 def main() -> None:
     st.set_page_config(
         page_title="Healthcare Multi-Agent Coordinator",
-        page_icon="🏥",
+        page_icon=":hospital:",
         layout="wide",
     )
 
     orchestrator, repository = load_orchestrator()
+    watsonx_orchestrator = load_watsonx_orchestrator(repository)
+    config = AppConfig.from_env()
     patients = repository.patients
     patient_options = {
         f"{record['patient_id']} - {record['name']}": record["patient_id"] for record in patients.values()
@@ -60,11 +81,20 @@ def main() -> None:
             height=140,
             help="Describe what the patient or caregiver is reporting today.",
         )
+        use_watsonx = st.toggle(
+            "Use live watsonx tool calling",
+            value=bool(watsonx_orchestrator),
+            disabled=watsonx_orchestrator is None,
+            help="Requires a configured .env file with watsonx credentials.",
+        )
         submitted = st.button("Run care coordination", type="primary", use_container_width=True)
 
         st.markdown("### Patient Snapshot")
         st.write(f"Literacy level: `{patient['literacy_level']}`")
         st.write(discharge_plan["summary"])
+        if watsonx_orchestrator is None:
+            missing = ", ".join(config.missing_watsonx_fields())
+            st.caption(f"watsonx disabled until these values exist in .env: {missing}")
 
     st.markdown(
         """
@@ -91,6 +121,14 @@ def main() -> None:
         return
 
     result = orchestrator.resolve(patient_id, symptom_report)
+    watsonx_result = None
+    watsonx_error = None
+    if use_watsonx and watsonx_orchestrator is not None:
+        try:
+            watsonx_result = watsonx_orchestrator.resolve(patient_id, symptom_report)
+        except Exception as exc:  # pragma: no cover
+            watsonx_error = str(exc)
+
     monitoring_output = result.details["monitoring_output"]
     logistics_output = result.details["logistics_output"]
     translator_output = result.details["translator_output"]
@@ -101,7 +139,7 @@ def main() -> None:
     with overview_col:
         st.markdown('<div class="result-card">', unsafe_allow_html=True)
         st.markdown('<div class="small-label">Recovery Summary</div>', unsafe_allow_html=True)
-        st.subheader(result.recovery_summary)
+        st.subheader(watsonx_result.final_response if watsonx_result else result.recovery_summary)
         st.write(f"Patient ID: `{result.patient_id}`")
         st.write(f"Symptom report: {symptom_report}")
         st.markdown("</div>", unsafe_allow_html=True)
@@ -156,6 +194,14 @@ def main() -> None:
     with st.expander("Transparent reasoning log", expanded=True):
         for entry in result.reasoning_log:
             st.write(f"- {entry}")
+
+    if watsonx_result:
+        with st.expander("watsonx Tool Trace", expanded=True):
+            for call in watsonx_result.tool_trace:
+                st.write(f"Tool: `{call['tool_name']}`")
+                st.json(call)
+    elif watsonx_error:
+        st.warning(f"watsonx live orchestration failed, so the app fell back to the local workflow: {watsonx_error}")
 
     with st.expander("Structured payload"):
         st.json(asdict(result))
