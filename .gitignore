@@ -4,4 +4,3 @@ __pycache__/
 .venv/
 *.egg-info/
 .env
-*.local.ps1
