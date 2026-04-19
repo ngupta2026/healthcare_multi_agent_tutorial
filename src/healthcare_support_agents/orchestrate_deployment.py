@@ -15,6 +15,8 @@ from urllib import parse, request
 
 from .config import AppConfig
 
+_TOKEN_CACHE: dict[str, tuple[str, float | None]] = {}
+
 
 @dataclass(slots=True)
 class DeploymentPaths:
@@ -165,8 +167,25 @@ def invoke_via_cli(config: AppConfig, prompt: str, include_reasoning: bool = Fal
 
 
 def _resolve_bearer_token(config: AppConfig) -> str:
+    cache_key = (config.orchestrate_endpoint or "default").rstrip("/")
+    now = time.time()
+
     if config.orchestrate_bearer_token:
-        return config.orchestrate_bearer_token
+        token = config.orchestrate_bearer_token.strip()
+        if token.startswith("<") and token.endswith(">"):
+            raise RuntimeError(
+                "ORCHESTRATE_BEARER_TOKEN appears to be a placeholder value. "
+                "Set a real token from `orchestrate env activate <env-name>`."
+            )
+        _TOKEN_CACHE[cache_key] = (token, None)
+        os.environ["ORCHESTRATE_BEARER_TOKEN"] = token
+        return token
+
+    cached = _TOKEN_CACHE.get(cache_key)
+    if cached:
+        token, expiry = cached
+        if not expiry or now < expiry - 30:
+            return token
 
     if (config.orchestrate_auth_type or "").lower() == "mcsp":
         raise RuntimeError(
@@ -203,7 +222,36 @@ def _resolve_bearer_token(config: AppConfig) -> str:
             f"Failed to exchange ORCHESTRATE_API_KEY at IAM endpoint ({config.orchestrate_iam_url}). "
             f"HTTP {exc.code}. Response: {details}"
         ) from exc
-    return payload["access_token"]
+    token = payload["access_token"]
+    expiry = None
+    if "expiration" in payload:
+        try:
+            expiry = float(payload["expiration"])
+        except (TypeError, ValueError):
+            expiry = None
+    elif "expires_in" in payload:
+        try:
+            expiry = now + float(payload["expires_in"])
+        except (TypeError, ValueError):
+            expiry = None
+
+    _TOKEN_CACHE[cache_key] = (token, expiry)
+    os.environ["ORCHESTRATE_BEARER_TOKEN"] = token
+    return token
+
+
+def _candidate_run_urls(endpoint: str, auth_type: str | None) -> list[str]:
+    base = endpoint.rstrip("/")
+    is_mcsp = (auth_type or "").lower().startswith("mcsp")
+    if is_mcsp:
+        return [
+            f"{base}/v1/orchestrate/runs",
+            f"{base}/api/v1/orchestrate/runs",
+        ]
+    return [
+        f"{base}/api/v1/orchestrate/runs",
+        f"{base}/v1/orchestrate/runs",
+    ]
 
 
 def invoke_via_api(config: AppConfig, prompt: str, poll_timeout_sec: int = 40) -> dict[str, Any]:
@@ -233,18 +281,48 @@ def invoke_via_api(config: AppConfig, prompt: str, poll_timeout_sec: int = 40) -
         ]
 
     body = json.dumps({"message": message}).encode("utf-8")
-    run_request = request.Request(
-        f"{endpoint.rstrip('/')}/api/v1/orchestrate/runs",
-        data=body,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
-    with request.urlopen(run_request, timeout=45) as response:
-        run_payload = json.loads(response.read().decode("utf-8"))
+    run_payload: dict[str, Any] | None = None
+    run_base_url: str | None = None
+    errors: list[str] = []
+
+    for runs_url in _candidate_run_urls(endpoint, config.orchestrate_auth_type):
+        run_request = request.Request(
+            runs_url,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with request.urlopen(run_request, timeout=45) as response:
+                run_payload = json.loads(response.read().decode("utf-8"))
+                run_base_url = runs_url
+                break
+        except HTTPError as exc:
+            details = exc.read().decode("utf-8", errors="replace")
+            if exc.code == 404:
+                errors.append(f"{runs_url} -> 404 Not Found")
+                continue
+            if exc.code == 401:
+                _TOKEN_CACHE.pop(endpoint.rstrip("/"), None)
+                raise RuntimeError(
+                    "Orchestrate API returned HTTP 401 Unauthorized. "
+                    "Refresh your token via `orchestrate env activate <env-name>`, "
+                    "ensure ORCHESTRATE_API_ENDPOINT is the API base URL from Orchestrate API details, and retry."
+                ) from exc
+            raise RuntimeError(
+                f"Orchestrate API run creation failed at {runs_url} with HTTP {exc.code}. Response: {details}"
+            ) from exc
+
+    if run_payload is None or run_base_url is None:
+        attempted = "; ".join(errors) if errors else "no candidate URL succeeded"
+        raise RuntimeError(
+            "Orchestrate API run creation failed with HTTP 404 on all known endpoint patterns. "
+            f"Attempted: {attempted}"
+        )
 
     run_id = run_payload.get("id")
     if not run_id:
@@ -252,9 +330,10 @@ def invoke_via_api(config: AppConfig, prompt: str, poll_timeout_sec: int = 40) -
 
     deadline = time.time() + poll_timeout_sec
     events: list[dict[str, Any]] = []
+    events_url = f"{run_base_url.rstrip('/')}/{run_id}/events"
     while time.time() < deadline:
         events_request = request.Request(
-            f"{endpoint.rstrip('/')}/api/v1/orchestrate/runs/{run_id}/events",
+            events_url,
             headers={
                 "Authorization": f"Bearer {token}",
                 "Accept": "application/json",

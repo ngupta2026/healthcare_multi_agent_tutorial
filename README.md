@@ -123,7 +123,13 @@ $env:PYTHONPATH="src"
 streamlit run src/healthcare_support_agents/streamlit_app.py
 ```
 
-If watsonx credentials are set, the UI can run live tool-calling through watsonx as an additional path.
+The Streamlit app now supports three execution modes from the sidebar:
+
+- `Local deterministic` (always available, local data-driven flow)
+- `Live watsonx tools` (requires `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `WATSONX_MODEL`)
+- `Orchestrate REST API` (requires `ORCHESTRATE_API_ENDPOINT` or `ORCHESTRATE_INSTANCE_URL`, plus auth via `ORCHESTRATE_BEARER_TOKEN` or `ORCHESTRATE_API_KEY` for IAM flows)
+
+For `ORCHESTRATE_AUTH_TYPE=mcsp`, set a valid `ORCHESTRATE_BEARER_TOKEN` before using API mode.
 
 ## Tests
 
