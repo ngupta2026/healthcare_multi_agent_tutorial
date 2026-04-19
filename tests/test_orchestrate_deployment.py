@@ -20,15 +20,17 @@ class OrchestrateDeploymentTests(unittest.TestCase):
             tool_file=repo_root / "src" / "healthcare_support_agents" / "orchestrate_adk_tools.py",
             requirements_file=repo_root / "requirements-orchestrate.txt",
             agent_spec_file=repo_root / "deploy" / "orchestrate" / "healthcare_care_coordinator.agent.yaml",
+            package_root=repo_root,
         )
 
         tools_command = tools_import_command(paths)
         agent_command = agent_import_command(paths)
 
-        self.assertEqual(tools_command[:4], ["orchestrate", "tools", "import", "-k"])
+        self.assertEqual(tools_command[:4], ["orchestrate", "tools", "import", "--kind"])
         self.assertIn("python", tools_command)
         self.assertIn(str(paths.tool_file), tools_command)
         self.assertIn(str(paths.requirements_file), tools_command)
+        self.assertIn(str(paths.package_root), tools_command)
 
         self.assertEqual(agent_command[:3], ["orchestrate", "agents", "import"])
         self.assertIn(str(paths.agent_spec_file), agent_command)

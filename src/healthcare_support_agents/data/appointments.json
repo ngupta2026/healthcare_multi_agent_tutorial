@@ -1,0 +1,26 @@
+[
+  {
+    "appointment_plan_id": "AP-1001",
+    "patient_id": "PT-1001",
+    "appointments": [
+      {
+        "specialty": "Cardiology",
+        "scheduled_at": "2026-04-15T10:30:00",
+        "transportation_status": "confirmed",
+        "transportation_note": "Daughter will drive to the clinic."
+      }
+    ]
+  },
+  {
+    "appointment_plan_id": "AP-2002",
+    "patient_id": "PT-2002",
+    "appointments": [
+      {
+        "specialty": "Primary Care",
+        "scheduled_at": "2026-04-13T14:00:00",
+        "transportation_status": "needs_booking",
+        "transportation_note": "Paratransit request was not submitted."
+      }
+    ]
+  }
+]

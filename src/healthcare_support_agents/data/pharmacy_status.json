@@ -1,0 +1,26 @@
+[
+  {
+    "pharmacy_plan_id": "RX-1001",
+    "patient_id": "PT-1001",
+    "medications": [
+      {
+        "name": "furosemide 20 mg",
+        "status": "ready_for_pickup",
+        "delay_reason": "",
+        "alternate_source": ""
+      }
+    ]
+  },
+  {
+    "pharmacy_plan_id": "RX-2002",
+    "patient_id": "PT-2002",
+    "medications": [
+      {
+        "name": "cephalexin 500 mg",
+        "status": "delayed",
+        "delay_reason": "Primary pharmacy is out of stock until tomorrow afternoon.",
+        "alternate_source": "Greenview Pharmacy, 1.2 miles away, has a same-day fill available."
+      }
+    ]
+  }
+]

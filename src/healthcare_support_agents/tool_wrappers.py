@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -18,8 +19,29 @@ def _serialize(value: Any) -> Any:
 
 
 def build_repository() -> DataRepository:
-    repo_root = Path(__file__).resolve().parents[2]
-    return DataRepository(repo_root / "data")
+    override_dir = os.getenv("HEALTHCARE_DATA_DIR")
+    candidates = []
+    if override_dir:
+        candidates.append(Path(override_dir))
+
+    module_dir = Path(__file__).resolve().parent
+    candidates.extend(
+        [
+            module_dir / "data",
+            Path(__file__).resolve().parents[2] / "data",
+            Path.cwd() / "data",
+        ]
+    )
+
+    for candidate in candidates:
+        if (candidate / "patients.json").exists():
+            return DataRepository(candidate)
+
+    searched = ", ".join(str(path) for path in candidates)
+    raise FileNotFoundError(
+        "Could not locate healthcare data directory. "
+        f"Looked in: {searched}. Set HEALTHCARE_DATA_DIR to override."
+    )
 
 
 class HealthcareToolRuntime:

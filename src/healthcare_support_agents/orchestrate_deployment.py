@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
 from urllib import parse, request
 
 from .config import AppConfig
@@ -19,6 +22,7 @@ class DeploymentPaths:
     tool_file: Path
     requirements_file: Path
     agent_spec_file: Path
+    package_root: Path
 
     @classmethod
     def defaults(cls) -> "DeploymentPaths":
@@ -28,20 +32,54 @@ class DeploymentPaths:
             tool_file=repo_root / "src" / "healthcare_support_agents" / "orchestrate_adk_tools.py",
             requirements_file=repo_root / "requirements-orchestrate.txt",
             agent_spec_file=repo_root / "deploy" / "orchestrate" / "healthcare_care_coordinator.agent.yaml",
+            package_root=repo_root / "src",
         )
 
 
 def _run(command: list[str], cwd: Path) -> str:
+    child_env = os.environ.copy()
+    # Avoid Windows cp1252/charmap crashes when the Orchestrate CLI prints emoji.
+    child_env.setdefault("PYTHONUTF8", "1")
+    child_env.setdefault("PYTHONIOENCODING", "utf-8")
+
+    with tempfile.TemporaryFile(mode="w+b") as stdout_file, tempfile.TemporaryFile(mode="w+b") as stderr_file:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            env=child_env,
+        )
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        stdout = stdout_file.read().decode("utf-8", errors="replace").strip()
+        stderr = stderr_file.read().decode("utf-8", errors="replace").strip()
+    if stdout:
+        print(stdout)
+    if completed.returncode != 0:
+        message = [
+            f"Command failed with exit code {completed.returncode}: {' '.join(command)}",
+        ]
+        if stdout:
+            message.append(f"stdout:\n{stdout}")
+        if stderr:
+            message.append(f"stderr:\n{stderr}")
+        raise RuntimeError("\n\n".join(message))
+    return completed.stdout
+
+
+def _run_streaming(command: list[str], cwd: Path) -> None:
+    child_env = os.environ.copy()
+    child_env.setdefault("PYTHONUTF8", "1")
+    child_env.setdefault("PYTHONIOENCODING", "utf-8")
+
     completed = subprocess.run(
         command,
         cwd=cwd,
-        check=True,
-        text=True,
-        capture_output=True,
+        env=child_env,
     )
-    if completed.stdout.strip():
-        print(completed.stdout.strip())
-    return completed.stdout
+    if completed.returncode != 0:
+        raise RuntimeError(f"Command failed with exit code {completed.returncode}: {' '.join(command)}")
 
 
 def ensure_cli_available() -> None:
@@ -53,18 +91,25 @@ def ensure_cli_available() -> None:
         ) from exc
 
 
-def tools_import_command(paths: DeploymentPaths) -> list[str]:
-    return [
+def tools_import_command(
+    paths: DeploymentPaths,
+    include_package_root: bool = True,
+    include_requirements: bool = True,
+) -> list[str]:
+    command = [
         "orchestrate",
         "tools",
         "import",
-        "-k",
+        "--kind",
         "python",
-        "-f",
+        "--file",
         str(paths.tool_file),
-        "-r",
-        str(paths.requirements_file),
     ]
+    if include_package_root:
+        command.extend(["--package-root", str(paths.package_root)])
+    if include_requirements:
+        command.extend(["--requirements-file", str(paths.requirements_file)])
+    return command
 
 
 def agent_import_command(paths: DeploymentPaths) -> list[str]:
@@ -91,7 +136,14 @@ def chat_command(agent_name: str, prompt: str, include_reasoning: bool = False) 
 def register_tools(paths: DeploymentPaths) -> None:
     ensure_cli_available()
     print("Registering Python tools into watsonx Orchestrate...")
-    _run(tools_import_command(paths), cwd=paths.repo_root)
+    try:
+        _run(tools_import_command(paths, include_package_root=True, include_requirements=True), cwd=paths.repo_root)
+    except RuntimeError as first_error:
+        print("Primary import attempt failed. Retrying without requirements file...")
+        try:
+            _run(tools_import_command(paths, include_package_root=True, include_requirements=False), cwd=paths.repo_root)
+        except RuntimeError:
+            raise first_error
     _run(["orchestrate", "tools", "list", "-v"], cwd=paths.repo_root)
 
 
@@ -105,12 +157,23 @@ def wire_agent(paths: DeploymentPaths) -> None:
 def invoke_via_cli(config: AppConfig, prompt: str, include_reasoning: bool = False) -> None:
     ensure_cli_available()
     print(f"Invoking agent '{config.orchestrate_agent_name}' via Orchestrate chat CLI...")
-    _run(chat_command(config.orchestrate_agent_name, prompt, include_reasoning=include_reasoning), cwd=DeploymentPaths.defaults().repo_root)
+    # Run in streaming mode to avoid Windows cp1252 decode crashes from captured output.
+    _run_streaming(
+        chat_command(config.orchestrate_agent_name, prompt, include_reasoning=include_reasoning),
+        cwd=DeploymentPaths.defaults().repo_root,
+    )
 
 
 def _resolve_bearer_token(config: AppConfig) -> str:
     if config.orchestrate_bearer_token:
         return config.orchestrate_bearer_token
+
+    if (config.orchestrate_auth_type or "").lower() == "mcsp":
+        raise RuntimeError(
+            "ORCHESTRATE_AUTH_TYPE is set to 'mcsp'. "
+            "API mode requires ORCHESTRATE_BEARER_TOKEN for mcsp environments. "
+            "The WXO API key cannot be exchanged at IBM IAM token endpoint."
+        )
 
     if not config.orchestrate_api_key:
         missing = ", ".join(config.missing_orchestrate_fields())
@@ -131,8 +194,15 @@ def _resolve_bearer_token(config: AppConfig) -> str:
         },
         method="POST",
     )
-    with request.urlopen(req, timeout=30) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    try:
+        with request.urlopen(req, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Failed to exchange ORCHESTRATE_API_KEY at IAM endpoint ({config.orchestrate_iam_url}). "
+            f"HTTP {exc.code}. Response: {details}"
+        ) from exc
     return payload["access_token"]
 
 

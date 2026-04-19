@@ -1,0 +1,18 @@
+[
+  {
+    "patient_id": "PT-1001",
+    "heart_rate": 96,
+    "oxygen_saturation": 95,
+    "temperature_f": 98.6,
+    "systolic_bp": 126,
+    "weight_delta_lb": 0.5
+  },
+  {
+    "patient_id": "PT-2002",
+    "heart_rate": 108,
+    "oxygen_saturation": 97,
+    "temperature_f": 100.6,
+    "systolic_bp": 118,
+    "weight_delta_lb": 0.0
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "patient_id": "PT-1001",
+    "name": "Margaret Ellis",
+    "literacy_level": "plain_language",
+    "discharge_plan_id": "DP-1001",
+    "care_plan_id": "CP-1001",
+    "pharmacy_plan_id": "RX-1001",
+    "appointment_plan_id": "AP-1001"
+  },
+  {
+    "patient_id": "PT-2002",
+    "name": "David Ramirez",
+    "literacy_level": "plain_language",
+    "discharge_plan_id": "DP-2002",
+    "care_plan_id": "CP-2002",
+    "pharmacy_plan_id": "RX-2002",
+    "appointment_plan_id": "AP-2002"
+  }
+]

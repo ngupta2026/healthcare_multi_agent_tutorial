@@ -5,7 +5,7 @@ from pathlib import Path
 
 from healthcare_support_agents.config import AppConfig
 from healthcare_support_agents.repository import DataRepository
-from healthcare_support_agents.tool_wrappers import HealthcareToolRuntime
+from healthcare_support_agents.tool_wrappers import HealthcareToolRuntime, build_repository
 from healthcare_support_agents.watsonx_orchestrator import WatsonxCareOrchestrator
 
 
@@ -67,6 +67,10 @@ def build_runtime() -> HealthcareToolRuntime:
 
 
 class WatsonxIntegrationTests(unittest.TestCase):
+    def test_build_repository_uses_packaged_data(self) -> None:
+        repository = build_repository()
+        self.assertIn("PT-1001", repository.patients)
+
     def test_config_normalizes_model_prefix(self) -> None:
         config = AppConfig(
             watsonx_apikey="abc",
