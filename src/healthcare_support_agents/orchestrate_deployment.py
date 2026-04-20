@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -8,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -17,6 +18,7 @@ from urllib import parse, request
 from .config import AppConfig
 
 _TOKEN_CACHE: dict[str, tuple[str, float | None]] = {}
+MCSP_DEFAULT_TOKEN_TTL_SEC = 2 * 60 * 60
 
 
 @dataclass(slots=True)
@@ -92,6 +94,67 @@ def ensure_cli_available() -> None:
         raise RuntimeError(
             "The orchestrate CLI is not installed. Install ADK first: pip install --upgrade ibm-watsonx-orchestrate"
         ) from exc
+
+
+def _refresh_mcsp_token_via_cli(env_name: str | None) -> None:
+    ensure_cli_available()
+    env = env_name or "default"
+    try:
+        _run(["orchestrate", "env", "activate", env], cwd=DeploymentPaths.defaults().repo_root)
+    except RuntimeError as exc:
+        raise RuntimeError(
+            f"Failed to refresh MCSP token for environment '{env}'. "
+            "Ensure the environment name is correct and the Orchestrate CLI is authenticated."
+        ) from exc
+
+
+def _request_mcsp_token(config: AppConfig) -> tuple[str, float | None]:
+    if not config.orchestrate_api_key:
+        raise RuntimeError("ORCHESTRATE_API_KEY is required for MCSP token refresh.")
+
+    req = request.Request(
+        config.orchestrate_mcsp_token_url,
+        data=json.dumps({"apikey": config.orchestrate_api_key}).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with request.urlopen(req, timeout=30) as response:
+            body = json.loads(response.read().decode("utf-8", errors="replace"))
+    except HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Failed to refresh MCSP token at {config.orchestrate_mcsp_token_url}. "
+            f"HTTP {exc.code}. Response: {details}"
+        ) from exc
+
+    token = _extract_mcsp_token(body)
+    if not token:
+        raise RuntimeError("MCSP token refresh response did not include a token.")
+
+    now = time.time()
+    expiry = _extract_token_expiry(body, now)
+    if expiry is None:
+        expiry = _decode_jwt_exp(token)
+    if expiry is None:
+        expiry = now + MCSP_DEFAULT_TOKEN_TTL_SEC
+    return token, expiry
+
+
+def _refresh_mcsp_token(config: AppConfig) -> tuple[str, float | None]:
+    if config.orchestrate_api_key:
+        return _request_mcsp_token(config)
+
+    _refresh_mcsp_token_via_cli(config.orchestrate_env_name)
+    cli_token = _load_mcsp_token_from_cli_cache(config.orchestrate_env_name)
+    if not cli_token:
+        raise RuntimeError(
+            "MCSP token refresh via CLI succeeded, but no token was found in credentials cache."
+        )
+    return cli_token, None
 
 
 def tools_import_command(
@@ -185,17 +248,16 @@ def _resolve_bearer_token(config: AppConfig) -> str:
             return token
 
     if (config.orchestrate_auth_type or "").lower() == "mcsp":
-        cli_token = _load_mcsp_token_from_cli_cache(config.orchestrate_env_name)
-        if cli_token:
-            _TOKEN_CACHE[cache_key] = (cli_token, None)
-            os.environ["ORCHESTRATE_BEARER_TOKEN"] = cli_token
-            return cli_token
-        raise RuntimeError(
-            "ORCHESTRATE_AUTH_TYPE is set to 'mcsp'. "
-            "API mode requires ORCHESTRATE_BEARER_TOKEN for mcsp environments. "
-            "A valid token was not found in ORCHESTRATE_BEARER_TOKEN or the Orchestrate CLI cache. "
-            "Run `orchestrate env activate <env-name>` and retry."
-        )
+        try:
+            refreshed_token, refreshed_expiry = _refresh_mcsp_token(config)
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "ORCHESTRATE_AUTH_TYPE is set to 'mcsp', but token refresh failed. "
+                "Set ORCHESTRATE_API_KEY for server-side refresh or ensure `orchestrate env activate <env-name>` works."
+            ) from exc
+        _TOKEN_CACHE[cache_key] = (refreshed_token, refreshed_expiry)
+        os.environ["ORCHESTRATE_BEARER_TOKEN"] = refreshed_token
+        return refreshed_token
 
     if not config.orchestrate_api_key:
         missing = ", ".join(config.missing_orchestrate_fields())
@@ -252,6 +314,77 @@ def _normalized_bearer_token(raw: str | None) -> str | None:
     if token.startswith("<") and token.endswith(">"):
         return None
     return token
+
+
+def _extract_mcsp_token(payload: Any) -> str | None:
+    if isinstance(payload, str):
+        return _normalized_bearer_token(payload)
+    if not isinstance(payload, dict):
+        return None
+
+    for key in ("token", "access_token", "jwt", "id_token", "wxo_mcsp_token"):
+        value = payload.get(key)
+        if isinstance(value, str):
+            token = _normalized_bearer_token(value)
+            if token:
+                return token
+
+    for nested_key in ("data", "result"):
+        nested = payload.get(nested_key)
+        token = _extract_mcsp_token(nested)
+        if token:
+            return token
+
+    return None
+
+
+def _extract_token_expiry(payload: Any, now: float) -> float | None:
+    if not isinstance(payload, dict):
+        return None
+
+    for key in ("expiration", "expires_at", "exp"):
+        value = payload.get(key)
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except ValueError:
+                continue
+
+    expires_in = payload.get("expires_in")
+    if isinstance(expires_in, (int, float)):
+        return now + float(expires_in)
+    if isinstance(expires_in, str):
+        try:
+            return now + float(expires_in.strip())
+        except ValueError:
+            return None
+
+    return None
+
+
+def _decode_jwt_exp(token: str) -> float | None:
+    parts = token.split(".")
+    if len(parts) < 2:
+        return None
+    payload = parts[1]
+    payload += "=" * (-len(payload) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(payload.encode("utf-8")).decode("utf-8", errors="replace")
+        parsed = json.loads(decoded)
+    except Exception:
+        return None
+
+    exp = parsed.get("exp")
+    if isinstance(exp, (int, float)):
+        return float(exp)
+    if isinstance(exp, str):
+        try:
+            return float(exp.strip())
+        except ValueError:
+            return None
+    return None
 
 
 def _load_mcsp_token_from_cli_cache(env_name: str | None) -> str | None:
@@ -346,7 +479,12 @@ def _candidate_run_urls(endpoint: str, auth_type: str | None) -> list[str]:
     ]
 
 
-def invoke_via_api(config: AppConfig, prompt: str, poll_timeout_sec: int = 40) -> dict[str, Any]:
+def invoke_via_api(
+    config: AppConfig,
+    prompt: str,
+    poll_timeout_sec: int = 40,
+    retried_after_401: bool = False,
+) -> dict[str, Any]:
     endpoint = config.orchestrate_endpoint
     if not endpoint:
         missing = ", ".join(config.missing_orchestrate_fields())
@@ -400,10 +538,32 @@ def invoke_via_api(config: AppConfig, prompt: str, poll_timeout_sec: int = 40) -
                 continue
             if exc.code == 401:
                 _TOKEN_CACHE.pop(endpoint.rstrip("/"), None)
+                if (
+                    (config.orchestrate_auth_type or "").lower() == "mcsp"
+                    and not retried_after_401
+                ):
+                    try:
+                        refreshed_token, refreshed_expiry = _refresh_mcsp_token(config)
+                        _TOKEN_CACHE[endpoint.rstrip("/")] = (refreshed_token, refreshed_expiry)
+                        os.environ["ORCHESTRATE_BEARER_TOKEN"] = refreshed_token
+                        # Clear any stale static token from config so retry uses refreshed cache/auth path.
+                        retry_config = replace(config, orchestrate_bearer_token=None)
+                        return invoke_via_api(
+                            retry_config,
+                            prompt,
+                            poll_timeout_sec=poll_timeout_sec,
+                            retried_after_401=True,
+                        )
+                    except RuntimeError as refresh_exc:
+                        raise RuntimeError(
+                            "Orchestrate API returned HTTP 401 Unauthorized and automatic MCSP token refresh failed. "
+                            "Verify ORCHESTRATE_API_KEY (server-side refresh) or `orchestrate env activate <env-name>` (CLI refresh), then retry. "
+                            f"Details: {refresh_exc}"
+                        ) from exc
                 raise RuntimeError(
                     "Orchestrate API returned HTTP 401 Unauthorized. "
-                    "Refresh your token via `orchestrate env activate <env-name>`, "
-                    "ensure ORCHESTRATE_API_ENDPOINT is the API base URL from Orchestrate API details, and retry."
+                    "Ensure ORCHESTRATE_API_ENDPOINT is correct and provide valid auth: "
+                    "ORCHESTRATE_API_KEY (recommended for MCSP) or fresh ORCHESTRATE_BEARER_TOKEN."
                 ) from exc
             raise RuntimeError(
                 f"Orchestrate API run creation failed at {runs_url} with HTTP {exc.code}. Response: {details}"

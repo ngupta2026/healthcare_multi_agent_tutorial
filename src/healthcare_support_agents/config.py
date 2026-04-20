@@ -9,6 +9,7 @@ DEFAULT_WATSONX_URL = "https://us-south.ml.cloud.ibm.com"
 DEFAULT_WATSONX_MODEL = "watsonx/ibm/granite-3-8b-instruct"
 DEFAULT_WATSONX_VERSION = "2024-10-10"
 DEFAULT_IAM_URL = "https://iam.cloud.ibm.com/identity/token"
+DEFAULT_MCSP_TOKEN_URL = "https://iam.platform.saas.ibm.com/siusermgr/api/1.0/apikeys/token"
 
 
 def _load_local_env() -> None:
@@ -62,6 +63,7 @@ class AppConfig:
     orchestrate_agent_id: str | None = None
     orchestrate_auth_type: str = "ibm_iam"
     orchestrate_iam_url: str = DEFAULT_IAM_URL
+    orchestrate_mcsp_token_url: str = DEFAULT_MCSP_TOKEN_URL
     watsonx_version: str = DEFAULT_WATSONX_VERSION
     iam_url: str = DEFAULT_IAM_URL
 
@@ -84,6 +86,8 @@ class AppConfig:
             orchestrate_agent_id=_read_setting("ORCHESTRATE_AGENT_ID"),
             orchestrate_auth_type=_read_setting("ORCHESTRATE_AUTH_TYPE", "ibm_iam") or "ibm_iam",
             orchestrate_iam_url=_read_setting("ORCHESTRATE_IAM_URL", DEFAULT_IAM_URL) or DEFAULT_IAM_URL,
+            orchestrate_mcsp_token_url=_read_setting("ORCHESTRATE_MCSP_TOKEN_URL", DEFAULT_MCSP_TOKEN_URL)
+            or DEFAULT_MCSP_TOKEN_URL,
         )
 
     @property

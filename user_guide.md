@@ -85,3 +85,8 @@ Use PT-1001 and symptom_report "dizziness improved but still mild shortness of b
 ```text
 Re-run PT-1001 with symptom_report "no shortness of breath today, no dizziness, eating well." Return updated risk and de-escalation guidance.
 ```
+check for bearer token: 
+Invoke-RestMethod -Method Post `
+  -Uri "https://iam.platform.saas.ibm.com/siusermgr/api/1.0/apikeys/token" `
+  -ContentType "application/json" `
+  -Body (@{ apikey = $env:ORCHESTRATE_API_KEY } | ConvertTo-Json)

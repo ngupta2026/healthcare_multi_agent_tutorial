@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import os
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 from healthcare_support_agents.config import AppConfig
@@ -12,7 +14,9 @@ from healthcare_support_agents.orchestrate_deployment import (
     _candidate_run_urls,
     _load_mcsp_token_from_cli_cache,
     _normalized_bearer_token,
+    _request_mcsp_token,
     _resolve_bearer_token,
+    invoke_via_api,
     agent_import_command,
     chat_command,
     tools_import_command,
@@ -20,6 +24,10 @@ from healthcare_support_agents.orchestrate_deployment import (
 
 
 class OrchestrateDeploymentTests(unittest.TestCase):
+    def setUp(self) -> None:
+        _TOKEN_CACHE.clear()
+        os.environ.pop("ORCHESTRATE_BEARER_TOKEN", None)
+
     def test_command_builders_include_expected_files(self) -> None:
         repo_root = Path("C:/tmp/healthcare")
         paths = DeploymentPaths(
@@ -127,6 +135,113 @@ class OrchestrateDeploymentTests(unittest.TestCase):
         ):
             token = _load_mcsp_token_from_cli_cache("healthcare-aws")
             self.assertEqual(token, "token-healthcare")
+
+    def test_request_mcsp_token_uses_api_key_endpoint(self) -> None:
+        config = AppConfig(
+            watsonx_apikey=None,
+            watsonx_project_id=None,
+            watsonx_url="https://us-south.ml.cloud.ibm.com",
+            watsonx_model="watsonx/ibm/granite-3-8b-instruct",
+            serper_api_key=None,
+            orchestrate_api_endpoint="https://api.dl.watson-orchestrate.ibm.com/instances/example",
+            orchestrate_api_key="api-key-123",
+            orchestrate_auth_type="mcsp",
+        )
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"token":"jwt-token-abc","expires_in":1200}'
+
+        with patch("healthcare_support_agents.orchestrate_deployment.request.urlopen", return_value=FakeResponse()):
+            token, expiry = _request_mcsp_token(config)
+            self.assertEqual(token, "jwt-token-abc")
+            self.assertIsNotNone(expiry)
+
+    def test_resolve_bearer_token_prefers_mcsp_api_key_refresh(self) -> None:
+        config = AppConfig(
+            watsonx_apikey=None,
+            watsonx_project_id=None,
+            watsonx_url="https://us-south.ml.cloud.ibm.com",
+            watsonx_model="watsonx/ibm/granite-3-8b-instruct",
+            serper_api_key=None,
+            orchestrate_api_endpoint="https://api.dl.watson-orchestrate.ibm.com/instances/example",
+            orchestrate_api_key="api-key-123",
+            orchestrate_auth_type="mcsp",
+        )
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"access_token":"refreshed-token","expires_in":1200}'
+
+        with patch("healthcare_support_agents.orchestrate_deployment.request.urlopen", return_value=FakeResponse()):
+            token = _resolve_bearer_token(config)
+            self.assertEqual(token, "refreshed-token")
+
+    def test_invoke_via_api_retries_with_refreshed_token_after_401(self) -> None:
+        config = AppConfig(
+            watsonx_apikey=None,
+            watsonx_project_id=None,
+            watsonx_url="https://us-south.ml.cloud.ibm.com",
+            watsonx_model="watsonx/ibm/granite-3-8b-instruct",
+            serper_api_key=None,
+            orchestrate_api_endpoint="https://api.dl.watson-orchestrate.ibm.com/instances/example",
+            orchestrate_api_key="api-key-123",
+            orchestrate_bearer_token="stale-token",
+            orchestrate_auth_type="mcsp",
+        )
+
+        class FakeResponse:
+            def __init__(self, body: str):
+                self._body = body.encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self._body
+
+        def fake_urlopen(req, timeout=30):
+            url = req.full_url
+            auth = req.headers.get("Authorization", "")
+
+            if url == config.orchestrate_mcsp_token_url:
+                return FakeResponse('{"token":"fresh-token","expires_in":1200}')
+
+            if url.endswith("/v1/orchestrate/runs") or url.endswith("/api/v1/orchestrate/runs"):
+                if auth == "Bearer stale-token":
+                    raise HTTPError(
+                        url=url,
+                        code=401,
+                        msg="Unauthorized",
+                        hdrs=None,
+                        fp=io.BytesIO(b'{"error":"Unauthorized"}'),
+                    )
+                if auth == "Bearer fresh-token":
+                    return FakeResponse('{"id":"run-1"}')
+
+            if url.endswith("/events"):
+                return FakeResponse('[{"event":"run.completed"}]')
+
+            raise AssertionError(f"Unexpected request url/auth: {url} {auth}")
+
+        with patch("healthcare_support_agents.orchestrate_deployment.request.urlopen", side_effect=fake_urlopen):
+            payload = invoke_via_api(config, "test prompt", poll_timeout_sec=2)
+            self.assertEqual(payload["run"]["id"], "run-1")
 
 
 if __name__ == "__main__":
