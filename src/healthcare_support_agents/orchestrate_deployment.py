@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -170,13 +171,9 @@ def _resolve_bearer_token(config: AppConfig) -> str:
     cache_key = (config.orchestrate_endpoint or "default").rstrip("/")
     now = time.time()
 
-    if config.orchestrate_bearer_token:
-        token = config.orchestrate_bearer_token.strip()
-        if token.startswith("<") and token.endswith(">"):
-            raise RuntimeError(
-                "ORCHESTRATE_BEARER_TOKEN appears to be a placeholder value. "
-                "Set a real token from `orchestrate env activate <env-name>`."
-            )
+    direct_token = _normalized_bearer_token(config.orchestrate_bearer_token)
+    if direct_token:
+        token = direct_token
         _TOKEN_CACHE[cache_key] = (token, None)
         os.environ["ORCHESTRATE_BEARER_TOKEN"] = token
         return token
@@ -188,10 +185,16 @@ def _resolve_bearer_token(config: AppConfig) -> str:
             return token
 
     if (config.orchestrate_auth_type or "").lower() == "mcsp":
+        cli_token = _load_mcsp_token_from_cli_cache(config.orchestrate_env_name)
+        if cli_token:
+            _TOKEN_CACHE[cache_key] = (cli_token, None)
+            os.environ["ORCHESTRATE_BEARER_TOKEN"] = cli_token
+            return cli_token
         raise RuntimeError(
             "ORCHESTRATE_AUTH_TYPE is set to 'mcsp'. "
             "API mode requires ORCHESTRATE_BEARER_TOKEN for mcsp environments. "
-            "The WXO API key cannot be exchanged at IBM IAM token endpoint."
+            "A valid token was not found in ORCHESTRATE_BEARER_TOKEN or the Orchestrate CLI cache. "
+            "Run `orchestrate env activate <env-name>` and retry."
         )
 
     if not config.orchestrate_api_key:
@@ -238,6 +241,95 @@ def _resolve_bearer_token(config: AppConfig) -> str:
     _TOKEN_CACHE[cache_key] = (token, expiry)
     os.environ["ORCHESTRATE_BEARER_TOKEN"] = token
     return token
+
+
+def _normalized_bearer_token(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    token = raw.strip().strip('"').strip("'")
+    if not token:
+        return None
+    if token.startswith("<") and token.endswith(">"):
+        return None
+    return token
+
+
+def _load_mcsp_token_from_cli_cache(env_name: str | None) -> str | None:
+    tokens = _load_mcsp_tokens_from_cli_cache()
+    if not tokens:
+        return None
+
+    preferred = [env_name, _load_active_orchestrate_env_name()]
+    for name in preferred:
+        if name and name in tokens:
+            return tokens[name]
+
+    return next(iter(tokens.values()), None)
+
+
+def _load_active_orchestrate_env_name() -> str | None:
+    config_path = Path.home() / ".config" / "orchestrate" / "config.yaml"
+    if not config_path.exists():
+        return None
+
+    in_context = False
+    for raw_line in config_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not in_context:
+            if stripped == "context:":
+                in_context = True
+            continue
+
+        if re.match(r"^\S", line):
+            break
+
+        match = re.match(r"^\s{2}active_environment:\s*(.+)\s*$", line)
+        if match:
+            value = match.group(1).strip().strip('"').strip("'")
+            if value and value.lower() not in {"null", "none"}:
+                return value
+            return None
+
+    return None
+
+
+def _load_mcsp_tokens_from_cli_cache() -> dict[str, str]:
+    credentials_path = Path.home() / ".cache" / "orchestrate" / "credentials.yaml"
+    if not credentials_path.exists():
+        return {}
+
+    current_env: str | None = None
+    in_auth_section = False
+    tokens: dict[str, str] = {}
+    for raw_line in credentials_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        if not in_auth_section:
+            if stripped == "auth:":
+                in_auth_section = True
+            continue
+
+        env_match = re.match(r"^\s{2}([A-Za-z0-9_.-]+):\s*(.*)$", line)
+        if env_match:
+            current_env = env_match.group(1)
+            continue
+
+        if re.match(r"^\S", line):
+            break
+
+        token_match = re.match(r"^\s{4}wxo_mcsp_token:\s*(.+)\s*$", line)
+        if token_match:
+            token = _normalized_bearer_token(token_match.group(1))
+            if token and current_env:
+                tokens[current_env] = token
+
+    return tokens
 
 
 def _candidate_run_urls(endpoint: str, auth_type: str | None) -> list[str]:

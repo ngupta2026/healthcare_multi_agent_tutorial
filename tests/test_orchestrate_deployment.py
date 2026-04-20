@@ -3,12 +3,15 @@ from __future__ import annotations
 import os
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from healthcare_support_agents.config import AppConfig
 from healthcare_support_agents.orchestrate_deployment import (
     DeploymentPaths,
     _TOKEN_CACHE,
     _candidate_run_urls,
+    _load_mcsp_token_from_cli_cache,
+    _normalized_bearer_token,
     _resolve_bearer_token,
     agent_import_command,
     chat_command,
@@ -99,8 +102,7 @@ class OrchestrateDeploymentTests(unittest.TestCase):
             orchestrate_bearer_token="<valid bearer token>",
             orchestrate_auth_type="mcsp",
         )
-        with self.assertRaises(RuntimeError):
-            _resolve_bearer_token(config)
+        self.assertIsNone(_normalized_bearer_token(config.orchestrate_bearer_token))
 
     def test_candidate_urls_prioritize_mcsp_pattern_for_mcsp(self) -> None:
         urls = _candidate_run_urls(
@@ -109,6 +111,22 @@ class OrchestrateDeploymentTests(unittest.TestCase):
         )
         self.assertEqual(urls[0], "https://api.dl.watson-orchestrate.ibm.com/instances/example/v1/orchestrate/runs")
         self.assertEqual(urls[1], "https://api.dl.watson-orchestrate.ibm.com/instances/example/api/v1/orchestrate/runs")
+
+    def test_load_mcsp_token_from_cli_cache_uses_named_env(self) -> None:
+        fake_yaml = (
+            "auth:\n"
+            "  healthcare-aws:\n"
+            "    wxo_mcsp_token: token-healthcare\n"
+            "  local:\n"
+            "    wxo_mcsp_token: token-local\n"
+        )
+        with (
+            patch("healthcare_support_agents.orchestrate_deployment.Path.home", return_value=Path("/tmp")),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.read_text", return_value=fake_yaml),
+        ):
+            token = _load_mcsp_token_from_cli_cache("healthcare-aws")
+            self.assertEqual(token, "token-healthcare")
 
 
 if __name__ == "__main__":
