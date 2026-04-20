@@ -27,6 +27,25 @@ def _load_local_env() -> None:
         os.environ.setdefault(key, value)
 
 
+def _read_setting(key: str, default: str | None = None) -> str | None:
+    env_value = os.getenv(key)
+    if env_value is not None:
+        return env_value
+
+    # Streamlit Community Cloud stores app secrets in st.secrets.
+    try:
+        import streamlit as st  # type: ignore
+
+        if key in st.secrets:
+            value = st.secrets.get(key)
+            if value is None:
+                return default
+            return str(value)
+    except Exception:
+        pass
+    return default
+
+
 @dataclass(slots=True)
 class AppConfig:
     watsonx_apikey: str | None
@@ -50,20 +69,21 @@ class AppConfig:
     def from_env(cls) -> "AppConfig":
         _load_local_env()
         return cls(
-            watsonx_apikey=os.getenv("WATSONX_APIKEY"),
-            watsonx_project_id=os.getenv("WATSONX_PROJECT_ID"),
-            watsonx_url=os.getenv("WATSONX_URL", DEFAULT_WATSONX_URL),
-            watsonx_model=os.getenv("WATSONX_MODEL", DEFAULT_WATSONX_MODEL),
-            serper_api_key=os.getenv("SERPER_API_KEY"),
-            orchestrate_instance_url=os.getenv("ORCHESTRATE_INSTANCE_URL"),
-            orchestrate_api_endpoint=os.getenv("ORCHESTRATE_API_ENDPOINT"),
-            orchestrate_api_key=os.getenv("ORCHESTRATE_API_KEY"),
-            orchestrate_bearer_token=os.getenv("ORCHESTRATE_BEARER_TOKEN"),
-            orchestrate_env_name=os.getenv("ORCHESTRATE_ENV_NAME", "healthcare-dev"),
-            orchestrate_agent_name=os.getenv("ORCHESTRATE_AGENT_NAME", "Healthcare_Care_Coordinator"),
-            orchestrate_agent_id=os.getenv("ORCHESTRATE_AGENT_ID"),
-            orchestrate_auth_type=os.getenv("ORCHESTRATE_AUTH_TYPE", "ibm_iam"),
-            orchestrate_iam_url=os.getenv("ORCHESTRATE_IAM_URL", DEFAULT_IAM_URL),
+            watsonx_apikey=_read_setting("WATSONX_APIKEY"),
+            watsonx_project_id=_read_setting("WATSONX_PROJECT_ID"),
+            watsonx_url=_read_setting("WATSONX_URL", DEFAULT_WATSONX_URL) or DEFAULT_WATSONX_URL,
+            watsonx_model=_read_setting("WATSONX_MODEL", DEFAULT_WATSONX_MODEL) or DEFAULT_WATSONX_MODEL,
+            serper_api_key=_read_setting("SERPER_API_KEY"),
+            orchestrate_instance_url=_read_setting("ORCHESTRATE_INSTANCE_URL"),
+            orchestrate_api_endpoint=_read_setting("ORCHESTRATE_API_ENDPOINT"),
+            orchestrate_api_key=_read_setting("ORCHESTRATE_API_KEY"),
+            orchestrate_bearer_token=_read_setting("ORCHESTRATE_BEARER_TOKEN"),
+            orchestrate_env_name=_read_setting("ORCHESTRATE_ENV_NAME", "healthcare-dev") or "healthcare-dev",
+            orchestrate_agent_name=_read_setting("ORCHESTRATE_AGENT_NAME", "Healthcare_Care_Coordinator")
+            or "Healthcare_Care_Coordinator",
+            orchestrate_agent_id=_read_setting("ORCHESTRATE_AGENT_ID"),
+            orchestrate_auth_type=_read_setting("ORCHESTRATE_AUTH_TYPE", "ibm_iam") or "ibm_iam",
+            orchestrate_iam_url=_read_setting("ORCHESTRATE_IAM_URL", DEFAULT_IAM_URL) or DEFAULT_IAM_URL,
         )
 
     @property

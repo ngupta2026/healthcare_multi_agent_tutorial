@@ -131,6 +131,35 @@ The Streamlit app now supports three execution modes from the sidebar:
 
 For `ORCHESTRATE_AUTH_TYPE=mcsp`, set a valid `ORCHESTRATE_BEARER_TOKEN` before using API mode.
 
+### Deploy on Streamlit Community Cloud
+
+1. Push this repo to GitHub.
+2. In Streamlit Community Cloud, create a new app from this repo/branch.
+3. Set **Main file path** to:
+
+```text
+streamlit_cloud_app.py
+```
+
+4. Add app secrets in Streamlit Cloud (Settings > Secrets), for example:
+
+```toml
+WATSONX_APIKEY = "your_watsonx_api_key_here"
+WATSONX_PROJECT_ID = "your_watsonx_project_id_here"
+WATSONX_URL = "https://us-south.ml.cloud.ibm.com"
+WATSONX_MODEL = "watsonx/ibm/granite-3-8b-instruct"
+SERPER_API_KEY = "your_serper_api_key_here"
+
+ORCHESTRATE_AUTH_TYPE = "mcsp"
+ORCHESTRATE_API_ENDPOINT = "https://api.dl.watson-orchestrate.ibm.com/instances/<your-instance-id>"
+ORCHESTRATE_AGENT_NAME = "Healthcare_Care_Coordinator"
+ORCHESTRATE_AGENT_ID = "bb8d1daa-3f30-48b6-a95e-1bc2f299b0b3"
+# Optional if you prefer static token mode:
+# ORCHESTRATE_BEARER_TOKEN = "your_bearer_token"
+```
+
+The app will read both environment variables and Streamlit secrets.
+
 ## Tests
 
 ```powershell
