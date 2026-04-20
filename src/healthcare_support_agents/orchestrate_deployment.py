@@ -18,7 +18,41 @@ from urllib import parse, request
 from .config import AppConfig
 
 _TOKEN_CACHE: dict[str, tuple[str, float | None]] = {}
+_AGENT_ID_CACHE: dict[str, str] = {}
 MCSP_DEFAULT_TOKEN_TTL_SEC = 2 * 60 * 60
+
+
+def _summarize_http_error_response(raw: str, url: str | None = None) -> str:
+    text = (raw or "").strip()
+    if not text:
+        return "No response body."
+
+    try:
+        payload = json.loads(text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        payload = None
+
+    if isinstance(payload, dict):
+        for key in ("message", "error_description", "error", "details", "last_error"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        compact = json.dumps(payload, ensure_ascii=False)
+        return compact[:220] + "..." if len(compact) > 220 else compact
+
+    lowered = text.lower()
+    host = parse.urlparse(url or "").hostname or ""
+    host_label = f" from {host}" if host else ""
+    if "<html" in lowered or "<!doctype html" in lowered:
+        title_match = re.search(r"<title>(.*?)</title>", text, flags=re.IGNORECASE | re.DOTALL)
+        title = title_match.group(1).strip() if title_match else ""
+        title_label = f" ({title})" if title else ""
+        if "cloudflare" in lowered or "access denied" in lowered or "error 1010" in lowered:
+            return f"HTML access denied page{host_label}{title_label}. Check VPN/firewall/proxy rules."
+        return f"HTML error page{host_label}{title_label}."
+
+    compact_text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
+    return compact_text[:220] + "..." if len(compact_text) > 220 else compact_text
 
 
 @dataclass(slots=True)
@@ -70,7 +104,7 @@ def _run(command: list[str], cwd: Path) -> str:
         if stderr:
             message.append(f"stderr:\n{stderr}")
         raise RuntimeError("\n\n".join(message))
-    return completed.stdout
+    return stdout
 
 
 def _run_streaming(command: list[str], cwd: Path) -> None:
@@ -128,7 +162,7 @@ def _request_mcsp_token(config: AppConfig) -> tuple[str, float | None]:
         details = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(
             f"Failed to refresh MCSP token at {config.orchestrate_mcsp_token_url}. "
-            f"HTTP {exc.code}. Response: {details}"
+            f"HTTP {exc.code}. Response: {_summarize_http_error_response(details, config.orchestrate_mcsp_token_url)}"
         ) from exc
 
     token = _extract_mcsp_token(body)
@@ -145,16 +179,23 @@ def _request_mcsp_token(config: AppConfig) -> tuple[str, float | None]:
 
 
 def _refresh_mcsp_token(config: AppConfig) -> tuple[str, float | None]:
+    errors: list[str] = []
     if config.orchestrate_api_key:
-        return _request_mcsp_token(config)
+        try:
+            return _request_mcsp_token(config)
+        except RuntimeError as exc:
+            errors.append(f"api_key_refresh_failed: {exc}")
 
-    _refresh_mcsp_token_via_cli(config.orchestrate_env_name)
-    cli_token = _load_mcsp_token_from_cli_cache(config.orchestrate_env_name)
-    if not cli_token:
-        raise RuntimeError(
-            "MCSP token refresh via CLI succeeded, but no token was found in credentials cache."
-        )
-    return cli_token, None
+    try:
+        _refresh_mcsp_token_via_cli(config.orchestrate_env_name)
+        cli_token = _load_mcsp_token_from_cli_cache(config.orchestrate_env_name)
+        if cli_token:
+            return cli_token, None
+        errors.append("cli_refresh_failed: no token found in CLI credentials cache after activate")
+    except RuntimeError as exc:
+        errors.append(f"cli_refresh_failed: {exc}")
+
+    raise RuntimeError("; ".join(errors) if errors else "unknown MCSP refresh failure")
 
 
 def tools_import_command(
@@ -254,6 +295,7 @@ def _resolve_bearer_token(config: AppConfig) -> str:
             raise RuntimeError(
                 "ORCHESTRATE_AUTH_TYPE is set to 'mcsp', but token refresh failed. "
                 "Set ORCHESTRATE_API_KEY for server-side refresh or ensure `orchestrate env activate <env-name>` works."
+                f" Details: {exc}"
             ) from exc
         _TOKEN_CACHE[cache_key] = (refreshed_token, refreshed_expiry)
         os.environ["ORCHESTRATE_BEARER_TOKEN"] = refreshed_token
@@ -285,7 +327,7 @@ def _resolve_bearer_token(config: AppConfig) -> str:
         details = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(
             f"Failed to exchange ORCHESTRATE_API_KEY at IAM endpoint ({config.orchestrate_iam_url}). "
-            f"HTTP {exc.code}. Response: {details}"
+            f"HTTP {exc.code}. Response: {_summarize_http_error_response(details, config.orchestrate_iam_url)}"
         ) from exc
     token = payload["access_token"]
     expiry = None
@@ -479,19 +521,102 @@ def _candidate_run_urls(endpoint: str, auth_type: str | None) -> list[str]:
     ]
 
 
-def invoke_via_api(
-    config: AppConfig,
-    prompt: str,
-    poll_timeout_sec: int = 40,
-    retried_after_401: bool = False,
-) -> dict[str, Any]:
+def _candidate_agents_urls(endpoint: str, auth_type: str | None) -> list[str]:
+    base = endpoint.rstrip("/")
+    is_mcsp = (auth_type or "").lower().startswith("mcsp")
+    if is_mcsp:
+        return [
+            f"{base}/v1/orchestrate/agents",
+            f"{base}/api/v1/orchestrate/agents",
+        ]
+    return [
+        f"{base}/api/v1/orchestrate/agents",
+        f"{base}/v1/orchestrate/agents",
+    ]
+
+
+def _extract_agents(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+
+    if not isinstance(payload, dict):
+        return []
+
+    candidates: list[dict[str, Any]] = []
+    for key in ("agents", "data", "native", "assistant", "external"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            candidates.extend(item for item in value if isinstance(item, dict))
+    return candidates
+
+
+def _resolve_orchestrate_agent_id(config: AppConfig, token: str) -> str | None:
+    if config.orchestrate_agent_id:
+        return config.orchestrate_agent_id
+
     endpoint = config.orchestrate_endpoint
     if not endpoint:
-        missing = ", ".join(config.missing_orchestrate_fields())
-        raise RuntimeError(f"Cannot call Orchestrate API. Missing: {missing}")
+        return None
+    target_name = (config.orchestrate_agent_name or "").strip().lower()
+    if not target_name:
+        return None
+    cache_key = f"{endpoint.rstrip('/')}::{target_name}"
+    if cache_key in _AGENT_ID_CACHE:
+        return _AGENT_ID_CACHE[cache_key]
 
-    token = _resolve_bearer_token(config)
-    message: dict[str, Any] = {
+    for agents_url in _candidate_agents_urls(endpoint, config.orchestrate_auth_type):
+        agents_request = request.Request(
+            agents_url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            },
+            method="GET",
+        )
+        try:
+            with request.urlopen(agents_request, timeout=10) as response:
+                agents_payload = json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            if exc.code == 404:
+                continue
+            continue
+        except Exception:
+            continue
+
+        for agent in _extract_agents(agents_payload):
+            name = str(agent.get("name") or "").strip().lower()
+            display_name = str(agent.get("display_name") or agent.get("title") or "").strip().lower()
+            if target_name in {name, display_name}:
+                agent_id = agent.get("id")
+                if isinstance(agent_id, str) and agent_id:
+                    _AGENT_ID_CACHE[cache_key] = agent_id
+                    return agent_id
+    return None
+
+
+def _extract_last_error(events: list[dict[str, Any]]) -> str | None:
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        event_name = event.get("event")
+        if event_name not in {"run.failed", "error"}:
+            continue
+        data = event.get("data")
+        if not isinstance(data, dict):
+            continue
+        detail = data.get("last_error") or data.get("error") or data.get("message") or data.get("reason")
+        if isinstance(detail, str) and detail.strip():
+            return detail.strip()
+    return None
+
+
+def _build_run_request_payloads(
+    prompt: str,
+    target_agent_id: str,
+    orchestrate_agent_name: str,
+    environment_id: str | None,
+) -> list[dict[str, Any]]:
+    base_message: dict[str, Any] = {
         "role": "user",
         "content": [
             {
@@ -501,73 +626,175 @@ def invoke_via_api(
         ],
     }
 
-    if config.orchestrate_agent_id:
-        message["mentions"] = [
-            {
-                "type": "agent",
-                "id": config.orchestrate_agent_id,
-                "name": config.orchestrate_agent_name,
-            }
-        ]
+    payloads: list[dict[str, Any]] = []
 
-    body = json.dumps({"message": message}).encode("utf-8")
+    message_with_assistant = dict(base_message)
+    message_with_assistant["assistant_id"] = target_agent_id
+    payload_with_agent: dict[str, Any] = {
+        "message": message_with_assistant,
+        "agent_id": target_agent_id,
+    }
+    if environment_id:
+        payload_with_agent["environment_id"] = environment_id
+    payloads.append(payload_with_agent)
+
+    if environment_id:
+        payloads.append(
+            {
+                "message": message_with_assistant,
+                "agent_id": target_agent_id,
+            }
+        )
+
+    payloads.append(
+        {
+            "message": dict(base_message),
+            "agent_id": target_agent_id,
+        }
+    )
+
+    message_with_mentions = dict(base_message)
+    message_with_mentions["mentions"] = [
+        {
+            "type": "agent",
+            "id": target_agent_id,
+            "name": orchestrate_agent_name,
+        }
+    ]
+    payloads.append({"message": message_with_mentions})
+
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for payload in payloads:
+        marker = json.dumps(payload, sort_keys=True)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        deduped.append(payload)
+    return deduped
+
+
+def _extract_run_identifiers(run_payload: dict[str, Any]) -> list[str]:
+    direct_keys = ("id", "run_id", "task_id", "a2a_task_id")
+    candidates: list[str] = []
+    sources: list[dict[str, Any]] = [run_payload]
+
+    nested_run = run_payload.get("run")
+    if isinstance(nested_run, dict):
+        sources.append(nested_run)
+
+    for source in sources:
+        for key in direct_keys:
+            value = source.get(key)
+            if isinstance(value, str) and value:
+                candidates.append(value)
+
+    deduped: list[str] = []
+    for candidate in candidates:
+        if candidate not in deduped:
+            deduped.append(candidate)
+    return deduped
+
+
+def _extract_run_identifier(run_payload: dict[str, Any]) -> str | None:
+    identifiers = _extract_run_identifiers(run_payload)
+    return identifiers[0] if identifiers else None
+
+
+def invoke_via_api(
+    config: AppConfig,
+    prompt: str,
+    poll_timeout_sec: int = 40,
+    retried_after_401: bool = False,
+    retried_after_invalid_assistant: bool = False,
+) -> dict[str, Any]:
+    endpoint = config.orchestrate_endpoint
+    if not endpoint:
+        missing = ", ".join(config.missing_orchestrate_fields())
+        raise RuntimeError(f"Cannot call Orchestrate API. Missing: {missing}")
+
+    token = _resolve_bearer_token(config)
+    target_agent_id = _resolve_orchestrate_agent_id(config, token)
+    if not target_agent_id:
+        raise RuntimeError(
+            "Could not resolve target Orchestrate agent ID for "
+            f"ORCHESTRATE_AGENT_NAME='{config.orchestrate_agent_name}'. "
+            "Set ORCHESTRATE_AGENT_ID in .env/.streamlit secrets (or ensure agent listing is accessible) to avoid routing to default assistant."
+        )
+
+    payload_variants = _build_run_request_payloads(
+        prompt=prompt,
+        target_agent_id=target_agent_id,
+        orchestrate_agent_name=config.orchestrate_agent_name,
+        environment_id=config.orchestrate_agent_environment_id,
+    )
     run_payload: dict[str, Any] | None = None
     run_base_url: str | None = None
     errors: list[str] = []
 
     for runs_url in _candidate_run_urls(endpoint, config.orchestrate_auth_type):
-        run_request = request.Request(
-            runs_url,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with request.urlopen(run_request, timeout=45) as response:
-                run_payload = json.loads(response.read().decode("utf-8"))
-                run_base_url = runs_url
-                break
-        except HTTPError as exc:
-            details = exc.read().decode("utf-8", errors="replace")
-            if exc.code == 404:
-                errors.append(f"{runs_url} -> 404 Not Found")
-                continue
-            if exc.code == 401:
-                _TOKEN_CACHE.pop(endpoint.rstrip("/"), None)
-                if (
-                    (config.orchestrate_auth_type or "").lower() == "mcsp"
-                    and not retried_after_401
-                ):
-                    try:
-                        refreshed_token, refreshed_expiry = _refresh_mcsp_token(config)
-                        _TOKEN_CACHE[endpoint.rstrip("/")] = (refreshed_token, refreshed_expiry)
-                        os.environ["ORCHESTRATE_BEARER_TOKEN"] = refreshed_token
-                        # Clear any stale static token from config so retry uses refreshed cache/auth path.
-                        retry_config = replace(config, orchestrate_bearer_token=None)
-                        return invoke_via_api(
-                            retry_config,
-                            prompt,
-                            poll_timeout_sec=poll_timeout_sec,
-                            retried_after_401=True,
-                        )
-                    except RuntimeError as refresh_exc:
-                        raise RuntimeError(
-                            "Orchestrate API returned HTTP 401 Unauthorized and automatic MCSP token refresh failed. "
-                            "Verify ORCHESTRATE_API_KEY (server-side refresh) or `orchestrate env activate <env-name>` (CLI refresh), then retry. "
-                            f"Details: {refresh_exc}"
-                        ) from exc
+        for payload_index, body_payload in enumerate(payload_variants):
+            body = json.dumps(body_payload).encode("utf-8")
+            run_request = request.Request(
+                runs_url,
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                with request.urlopen(run_request, timeout=45) as response:
+                    run_payload = json.loads(response.read().decode("utf-8"))
+                    run_base_url = runs_url
+                    break
+            except HTTPError as exc:
+                details = exc.read().decode("utf-8", errors="replace")
+                summarized = _summarize_http_error_response(details, runs_url)
+                if exc.code == 404:
+                    errors.append(f"{runs_url} -> 404 Not Found")
+                    continue
+                if exc.code == 500 and "uuid is not json serializable" in summarized.lower():
+                    errors.append(f"{runs_url} payload[{payload_index}] -> 500 UUID serialization")
+                    continue
+                if exc.code == 401:
+                    _TOKEN_CACHE.pop(endpoint.rstrip("/"), None)
+                    if (
+                        (config.orchestrate_auth_type or "").lower() == "mcsp"
+                        and not retried_after_401
+                    ):
+                        try:
+                            refreshed_token, refreshed_expiry = _refresh_mcsp_token(config)
+                            _TOKEN_CACHE[endpoint.rstrip("/")] = (refreshed_token, refreshed_expiry)
+                            os.environ["ORCHESTRATE_BEARER_TOKEN"] = refreshed_token
+                            # Clear any stale static token from config so retry uses refreshed cache/auth path.
+                            retry_config = replace(config, orchestrate_bearer_token=None)
+                            return invoke_via_api(
+                                retry_config,
+                                prompt,
+                                poll_timeout_sec=poll_timeout_sec,
+                                retried_after_401=True,
+                                retried_after_invalid_assistant=retried_after_invalid_assistant,
+                            )
+                        except RuntimeError as refresh_exc:
+                            raise RuntimeError(
+                                "Orchestrate API returned HTTP 401 Unauthorized and automatic MCSP token refresh failed. "
+                                "Verify ORCHESTRATE_API_KEY (server-side refresh) or `orchestrate env activate <env-name>` (CLI refresh), then retry. "
+                                f"Details: {refresh_exc}"
+                            ) from exc
+                    raise RuntimeError(
+                        "Orchestrate API returned HTTP 401 Unauthorized. "
+                        "Ensure ORCHESTRATE_API_ENDPOINT is correct and provide valid auth: "
+                        "ORCHESTRATE_API_KEY (recommended for MCSP) or fresh ORCHESTRATE_BEARER_TOKEN."
+                    ) from exc
                 raise RuntimeError(
-                    "Orchestrate API returned HTTP 401 Unauthorized. "
-                    "Ensure ORCHESTRATE_API_ENDPOINT is correct and provide valid auth: "
-                    "ORCHESTRATE_API_KEY (recommended for MCSP) or fresh ORCHESTRATE_BEARER_TOKEN."
+                    f"Orchestrate API run creation failed at {runs_url} with HTTP {exc.code}. "
+                    f"Response: {summarized}"
                 ) from exc
-            raise RuntimeError(
-                f"Orchestrate API run creation failed at {runs_url} with HTTP {exc.code}. Response: {details}"
-            ) from exc
+        if run_payload is not None and run_base_url is not None:
+            break
 
     if run_payload is None or run_base_url is None:
         attempted = "; ".join(errors) if errors else "no candidate URL succeeded"
@@ -576,27 +803,62 @@ def invoke_via_api(
             f"Attempted: {attempted}"
         )
 
-    run_id = run_payload.get("id")
-    if not run_id:
+    run_ids = _extract_run_identifiers(run_payload)
+    if not run_ids:
         return {"run": run_payload, "events": []}
 
     deadline = time.time() + poll_timeout_sec
     events: list[dict[str, Any]] = []
-    events_url = f"{run_base_url.rstrip('/')}/{run_id}/events"
+    events_urls = [f"{run_base_url.rstrip('/')}/{run_id}/events" for run_id in run_ids]
+    terminal_reached = False
     while time.time() < deadline:
-        events_request = request.Request(
-            events_url,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/json",
-            },
-            method="GET",
-        )
-        with request.urlopen(events_request, timeout=45) as response:
-            events = json.loads(response.read().decode("utf-8"))
-        if any(event.get("event") in {"run.completed", "run.failed", "run.cancelled", "done"} for event in events):
+        for events_url in events_urls:
+            events_request = request.Request(
+                events_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                },
+                method="GET",
+            )
+            try:
+                with request.urlopen(events_request, timeout=45) as response:
+                    candidate_events = json.loads(response.read().decode("utf-8"))
+            except HTTPError as exc:
+                if exc.code == 404:
+                    continue
+                raise
+
+            if isinstance(candidate_events, list):
+                events = candidate_events
+            else:
+                events = []
+
+            if any(
+                isinstance(event, dict) and event.get("event") in {"run.completed", "run.failed", "run.cancelled", "done"}
+                for event in events
+            ):
+                terminal_reached = True
+                break
+        if terminal_reached:
             break
         time.sleep(2)
+
+    last_error = _extract_last_error(events)
+    if (
+        last_error
+        and "invalid assistant for routing" in last_error.lower()
+        and config.orchestrate_agent_id
+        and not retried_after_invalid_assistant
+    ):
+        retry_config = replace(config, orchestrate_agent_id=None)
+        return invoke_via_api(
+            retry_config,
+            prompt,
+            poll_timeout_sec=poll_timeout_sec,
+            retried_after_401=retried_after_401,
+            retried_after_invalid_assistant=True,
+        )
 
     return {"run": run_payload, "events": events}
 

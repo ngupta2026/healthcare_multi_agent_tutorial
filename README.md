@@ -53,6 +53,7 @@ ORCHESTRATE_BEARER_TOKEN=
 ORCHESTRATE_ENV_NAME=healthcare-dev
 ORCHESTRATE_AGENT_NAME=Healthcare_Care_Coordinator
 ORCHESTRATE_AGENT_ID=
+ORCHESTRATE_AGENT_ENVIRONMENT_ID=
 ORCHESTRATE_AUTH_TYPE=ibm_iam
 ORCHESTRATE_IAM_URL=https://iam.cloud.ibm.com/identity/token
 ```
@@ -154,6 +155,7 @@ ORCHESTRATE_AUTH_TYPE = "mcsp"
 ORCHESTRATE_API_ENDPOINT = "https://api.dl.watson-orchestrate.ibm.com/instances/<your-instance-id>"
 ORCHESTRATE_AGENT_NAME = "Healthcare_Care_Coordinator"
 ORCHESTRATE_AGENT_ID = "bb8d1daa-3f30-48b6-a95e-1bc2f299b0b3"
+ORCHESTRATE_AGENT_ENVIRONMENT_ID = "518fe261-3238-42eb-b798-d91c3e14dbc7"
 # Optional if you prefer static token mode:
 # ORCHESTRATE_BEARER_TOKEN = "your_bearer_token"
 ```

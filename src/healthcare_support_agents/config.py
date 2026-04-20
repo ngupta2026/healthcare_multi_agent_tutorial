@@ -61,6 +61,7 @@ class AppConfig:
     orchestrate_env_name: str = "healthcare-dev"
     orchestrate_agent_name: str = "Healthcare_Care_Coordinator"
     orchestrate_agent_id: str | None = None
+    orchestrate_agent_environment_id: str | None = None
     orchestrate_auth_type: str = "ibm_iam"
     orchestrate_iam_url: str = DEFAULT_IAM_URL
     orchestrate_mcsp_token_url: str = DEFAULT_MCSP_TOKEN_URL
@@ -84,6 +85,7 @@ class AppConfig:
             orchestrate_agent_name=_read_setting("ORCHESTRATE_AGENT_NAME", "Healthcare_Care_Coordinator")
             or "Healthcare_Care_Coordinator",
             orchestrate_agent_id=_read_setting("ORCHESTRATE_AGENT_ID"),
+            orchestrate_agent_environment_id=_read_setting("ORCHESTRATE_AGENT_ENVIRONMENT_ID"),
             orchestrate_auth_type=_read_setting("ORCHESTRATE_AUTH_TYPE", "ibm_iam") or "ibm_iam",
             orchestrate_iam_url=_read_setting("ORCHESTRATE_IAM_URL", DEFAULT_IAM_URL) or DEFAULT_IAM_URL,
             orchestrate_mcsp_token_url=_read_setting("ORCHESTRATE_MCSP_TOKEN_URL", DEFAULT_MCSP_TOKEN_URL)

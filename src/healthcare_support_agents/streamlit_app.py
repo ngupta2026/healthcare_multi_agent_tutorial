@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import asdict, replace
 from typing import Any
 
@@ -52,9 +53,37 @@ def build_orchestrate_prompt(patient_id: str, symptom_report: str) -> str:
     return (
         f'Use patient_id "{patient_id}" and symptom_report "{symptom_report}". '
         "Call resolve_recovery_case first. "
-        "Return only tool-grounded output with risk_status, escalation_required, key_findings, and immediate_actions. "
+        "Return ONLY a concise tool-grounded summary with four lines exactly: "
+        "risk_status, escalation_required, key_findings, immediate_actions. "
+        "Do not include code blocks, pseudocode, or implementation examples. "
         "Do not ask follow-up questions."
     )
+
+
+def clean_orchestrate_summary(text: str) -> str:
+    cleaned = re.sub(r"```[\s\S]*?```", "", text or "")
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    if not lines:
+        return ""
+
+    ignored_prefixes = (
+        "### recovery case resolution",
+        "#### patient id:",
+        "#### symptom report:",
+        "output",
+        "print(",
+        "def ",
+        "patient_id =",
+        "symptom_report =",
+    )
+    filtered = [
+        line for line in lines
+        if not line.lower().startswith(ignored_prefixes)
+    ]
+    summary = "\n".join(filtered).strip()
+    if not summary:
+        summary = "\n".join(lines[:6]).strip()
+    return summary
 
 
 def extract_text(content: Any) -> str:
@@ -81,13 +110,47 @@ def extract_text(content: Any) -> str:
 
 def parse_orchestrate_payload(payload: dict[str, Any]) -> dict[str, Any]:
     run = payload.get("run", {})
-    events = payload.get("events", [])
+    run_meta = run
+    if isinstance(run, dict):
+        nested_run = run.get("run")
+        if isinstance(nested_run, dict):
+            run_meta = nested_run
+
+    events = payload.get("events")
+    if not isinstance(events, list) and isinstance(run, dict) and isinstance(run.get("events"), list):
+        events = run.get("events")
+    if not isinstance(events, list):
+        events = []
+
     assistant_messages: list[str] = []
     tool_calls: list[dict[str, Any]] = []
+    terminal_event_status = "unknown"
+    failure_reason = ""
+    terminal_map = {
+        "run.completed": "completed",
+        "done": "completed",
+        "run.failed": "failed",
+        "run.cancelled": "cancelled",
+    }
 
     for event in events:
         if not isinstance(event, dict):
             continue
+        event_name = event.get("event")
+        if isinstance(event_name, str) and event_name in terminal_map:
+            terminal_event_status = terminal_map[event_name]
+            if event_name in {"run.failed", "run.cancelled"}:
+                data = event.get("data", {})
+                if isinstance(data, dict):
+                    detail = (
+                        data.get("last_error")
+                        or data.get("error")
+                        or data.get("reason")
+                        or data.get("message")
+                    )
+                    if isinstance(detail, str) and detail.strip():
+                        failure_reason = detail.strip()
+
         data = event.get("data", event)
         if not isinstance(data, dict):
             continue
@@ -105,12 +168,26 @@ def parse_orchestrate_payload(payload: dict[str, Any]) -> dict[str, Any]:
             tool_calls.extend(call for call in event_tool_calls if isinstance(call, dict))
 
     return {
-        "run_id": run.get("id", "n/a"),
-        "run_status": run.get("status") or run.get("state") or "unknown",
+        "run_id": (
+            run_meta.get("id")
+            or run_meta.get("run_id")
+            or run_meta.get("task_id")
+            or run_meta.get("thread_id")
+            or "n/a"
+        ),
+        "run_status": (
+            run_meta.get("status")
+            or run_meta.get("state")
+            or run_meta.get("run_status")
+            or run_meta.get("a2a_task_status")
+            or terminal_event_status
+            or "unknown"
+        ),
         "assistant_messages": assistant_messages,
         "tool_calls": tool_calls,
         "final_message": assistant_messages[-1] if assistant_messages else "",
         "events": events,
+        "failure_reason": failure_reason,
     }
 
 
@@ -156,7 +233,10 @@ def main() -> None:
             help="Switch between local deterministic orchestration, direct watsonx tool-calling, or hosted Orchestrate API runs.",
         )
         token_key = "orchestrate_bearer_token"
-        default_token = st.session_state.get(token_key, config.orchestrate_bearer_token or "")
+        env_token = os.environ.get("ORCHESTRATE_BEARER_TOKEN", "")
+        if token_key not in st.session_state and env_token:
+            st.session_state[token_key] = env_token
+        default_token = st.session_state.get(token_key) or env_token or config.orchestrate_bearer_token or ""
         bearer_token = st.text_input(
             "Orchestrate bearer token (optional override)",
             value=default_token,
@@ -166,6 +246,32 @@ def main() -> None:
         if bearer_token:
             st.session_state[token_key] = bearer_token
             os.environ["ORCHESTRATE_BEARER_TOKEN"] = bearer_token
+        elif token_key in st.session_state:
+            # Allow clearing a previously entered token from session.
+            st.session_state.pop(token_key, None)
+            os.environ.pop("ORCHESTRATE_BEARER_TOKEN", None)
+
+        active_token = st.session_state.get(token_key) or os.environ.get("ORCHESTRATE_BEARER_TOKEN") or config.orchestrate_bearer_token
+        token_source = "none"
+        if st.session_state.get(token_key):
+            token_source = "session"
+        elif os.environ.get("ORCHESTRATE_BEARER_TOKEN"):
+            token_source = "env"
+        elif config.orchestrate_bearer_token:
+            token_source = "config"
+
+        st.caption(f"Token source: `{token_source}`")
+        st.caption(f"API key present: `{bool(config.orchestrate_api_key)}`")
+        if active_token:
+            if len(active_token) > 24:
+                preview = f"{active_token[:12]}...{active_token[-8:]}"
+            else:
+                preview = active_token
+            st.caption(f"Token preview: `{preview}`")
+            if st.checkbox("Show active token (local debug only)", value=False):
+                st.code(active_token, language="text")
+        else:
+            st.caption("Token preview: `none`")
         submitted = st.button("Run care coordination", type="primary", use_container_width=True)
 
         st.markdown("### Engine Readiness")
@@ -218,6 +324,7 @@ def main() -> None:
     watsonx_error = None
     orchestrate_payload = None
     orchestrate_error = None
+    parsed_orchestrate: dict[str, Any] | None = None
 
     if execution_mode == "Live watsonx tools":
         if watsonx_orchestrator is None:
@@ -236,12 +343,24 @@ def main() -> None:
                 config,
                 orchestrate_bearer_token=st.session_state.get("orchestrate_bearer_token", config.orchestrate_bearer_token),
             )
-            orchestrate_payload = invoke_via_api(run_config, prompt, poll_timeout_sec=90)
-            parsed = parse_orchestrate_payload(orchestrate_payload)
-            if parsed["final_message"]:
-                selected_summary = parsed["final_message"]
+            with st.spinner("Running Orchestrate workflow..."):
+                orchestrate_payload = invoke_via_api(run_config, prompt, poll_timeout_sec=45)
+            refreshed_token = os.environ.get("ORCHESTRATE_BEARER_TOKEN")
+            if refreshed_token and not st.session_state.get("orchestrate_bearer_token"):
+                st.session_state["orchestrate_bearer_token"] = refreshed_token
+            parsed_orchestrate = parse_orchestrate_payload(orchestrate_payload)
+            run_status = str(parsed_orchestrate.get("run_status", "unknown")).lower()
+            if run_status in {"failed", "cancelled"}:
+                reason = parsed_orchestrate.get("failure_reason") or f"Orchestrate run status is {run_status}."
+                orchestrate_error = str(reason)
+                selected_mode_badge = "Orchestrate REST API (fallback: local deterministic)"
+            elif parsed_orchestrate.get("final_message"):
+                selected_summary = clean_orchestrate_summary(str(parsed_orchestrate["final_message"])) or selected_summary
+            else:
+                selected_mode_badge = "Orchestrate REST API (no assistant message, fallback: local deterministic)"
         except Exception as exc:  # pragma: no cover
             orchestrate_error = str(exc)
+            selected_mode_badge = "Orchestrate REST API (fallback: local deterministic)"
 
     monitoring_output = result.details["monitoring_output"]
     logistics_output = result.details["logistics_output"]
@@ -319,7 +438,7 @@ def main() -> None:
         st.error(f"watsonx invocation failed: {watsonx_error}")
 
     if orchestrate_payload:
-        parsed = parse_orchestrate_payload(orchestrate_payload)
+        parsed = parsed_orchestrate or parse_orchestrate_payload(orchestrate_payload)
         with st.expander("Orchestrate Run Trace", expanded=True):
             st.write(f"Run ID: `{parsed['run_id']}`")
             st.write(f"Run status: `{parsed['run_status']}`")
@@ -333,7 +452,7 @@ def main() -> None:
                     st.json(call)
             st.write("Raw payload:")
             st.json(orchestrate_payload)
-    elif orchestrate_error:
+    if orchestrate_error:
         st.error(f"Orchestrate API invocation failed: {orchestrate_error}")
 
     with st.expander("Structured payload"):
