@@ -81,19 +81,22 @@ class MonitoringConnector:
             escalate_to_nurse = True
             concerning_signals.append("Patient reported a red-flag symptom in the symptom check-in.")
 
-        if vitals["oxygen_saturation"] < 92:
+        if vitals["oxygen_saturation"] is not None and vitals["oxygen_saturation"] < 92:
             triage_level = "high_priority_health_shift"
             escalate_to_nurse = True
             concerning_signals.append(f"Oxygen saturation is low at {vitals['oxygen_saturation']}%.")
 
-        if vitals["temperature_f"] >= 100.4 or vitals["heart_rate"] >= 110 or vitals["weight_delta_lb"] > 2:
+        temp_high = vitals["temperature_f"] is not None and vitals["temperature_f"] >= 100.4
+        hr_high = vitals["heart_rate"] is not None and vitals["heart_rate"] >= 110
+        weight_up = vitals["weight_delta_lb"] is not None and vitals["weight_delta_lb"] > 2
+        if temp_high or hr_high or weight_up:
             if triage_level != "high_priority_health_shift":
                 triage_level = "watch_closely"
-            if vitals["temperature_f"] >= 100.4:
+            if temp_high:
                 concerning_signals.append(f"Temperature is elevated at {vitals['temperature_f']} F.")
-            if vitals["heart_rate"] >= 110:
+            if hr_high:
                 concerning_signals.append(f"Heart rate is elevated at {vitals['heart_rate']} bpm.")
-            if vitals["weight_delta_lb"] > 2:
+            if weight_up:
                 concerning_signals.append(
                     f"Weight increased by {vitals['weight_delta_lb']} pounds since the prior check-in."
                 )
