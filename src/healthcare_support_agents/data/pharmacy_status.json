@@ -22,5 +22,47 @@
         "alternate_source": "Greenview Pharmacy, 1.2 miles away, has a same-day fill available."
       }
     ]
+  },
+  {
+    "pharmacy_plan_id": "RX-1002",
+    "patient_id": "PT-1002",
+    "medications": [
+      {
+        "name": "metoprolol 25 mg",
+        "status": "delayed",
+        "delay_reason": "Insurance authorization hold pending approval.",
+        "alternate_source": ""
+      }
+    ]
+  },
+  {
+    "pharmacy_plan_id": "RX-1003",
+    "patient_id": "PT-1003",
+    "medications": [
+      {
+        "name": "cephalexin 500 mg",
+        "status": "dispensed",
+        "delay_reason": "",
+        "alternate_source": ""
+      }
+    ]
+  },
+  {
+    "pharmacy_plan_id": "RX-3003",
+    "patient_id": "PT-3003",
+    "medications": [
+      {
+        "name": "amoxicillin 500 mg",
+        "status": "ready_for_pickup",
+        "delay_reason": "",
+        "alternate_source": ""
+      },
+      {
+        "name": "metoprolol 25 mg",
+        "status": "dispensed",
+        "delay_reason": "",
+        "alternate_source": ""
+      }
+    ]
   }
 ]

@@ -12,5 +12,26 @@
     "summary": "Discharged after cellulitis treatment with oral antibiotics and mobility precautions.",
     "clinical_note": "Take cephalexin 500 mg four times daily for 7 days. Keep the leg elevated while seated. Mild redness may improve slowly, but spreading redness, fever above 100.4 F, or worsening swelling needs same-day review. Use the walker for all transfers to reduce fall risk.",
     "daily_routine": "Wakes at 6:30 AM, breakfast at 7:30 AM, lunch at 12:30 PM, dinner at 6:00 PM, bedtime at 10:00 PM."
+  },
+  {
+    "discharge_plan_id": "DP-1002",
+    "patient_id": "PT-1002",
+    "summary": "Discharged after post-acute chest pain observation with beta blocker initiation.",
+    "clinical_note": "Take metoprolol 25 mg twice daily. Report any chest tightness, shortness of breath, or dizziness immediately. Do not stop medication without speaking to your cardiologist. Avoid strenuous activity for 72 hours. Attend tele-triage follow-up as scheduled.",
+    "daily_routine": "Wakes at 7:00 AM, light breakfast at 7:30 AM, rest periods mid-morning and afternoon, bedtime at 10:00 PM."
+  },
+  {
+    "discharge_plan_id": "DP-1003",
+    "patient_id": "PT-1003",
+    "summary": "Discharged after knee procedure with wound care instructions and antibiotic course.",
+    "clinical_note": "Take cephalexin 500 mg as prescribed. Keep wound site clean and dry. Use walker for all movement. Watch for signs of infection: increased redness, warmth, or discharge. Attend wound clinic follow-up tomorrow morning.",
+    "daily_routine": "Wakes at 7:30 AM, breakfast at 8:00 AM, afternoon rest with leg elevated, bedtime at 9:00 PM."
+  },
+  {
+    "discharge_plan_id": "DP-3003",
+    "patient_id": "PT-3003",
+    "summary": "Discharged after respiratory and cardiac monitoring with baseline medication continuation.",
+    "clinical_note": "Continue baseline medications unless nurse provides updated instructions. Report any breathing changes, dizziness, or chest discomfort immediately. Attend cardiology follow-up as scheduled. Do not exert yourself until cleared.",
+    "daily_routine": "Wakes at 7:00 AM, light activity only, check-in call with care team by noon, bedtime at 9:00 PM."
   }
 ]

@@ -22,5 +22,41 @@
         "transportation_note": "Paratransit request was not submitted."
       }
     ]
+  },
+  {
+    "appointment_plan_id": "AP-1002",
+    "patient_id": "PT-1002",
+    "appointments": [
+      {
+        "specialty": "Tele-triage",
+        "scheduled_at": "2026-04-26T11:00:00",
+        "transportation_status": "confirmed",
+        "transportation_note": "Virtual appointment, no transport required."
+      }
+    ]
+  },
+  {
+    "appointment_plan_id": "AP-1003",
+    "patient_id": "PT-1003",
+    "appointments": [
+      {
+        "specialty": "Wound Clinic",
+        "scheduled_at": "2026-04-27T09:00:00",
+        "transportation_status": "confirmed",
+        "transportation_note": "Family member confirmed as driver."
+      }
+    ]
+  },
+  {
+    "appointment_plan_id": "AP-3003",
+    "patient_id": "PT-3003",
+    "appointments": [
+      {
+        "specialty": "Cardiology",
+        "scheduled_at": "2026-04-26T14:30:00",
+        "transportation_status": "in_progress",
+        "transportation_note": "Transport arrangement in progress."
+      }
+    ]
   }
 ]

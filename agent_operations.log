@@ -1,0 +1,547 @@
+[2026-04-26 03:47:35] [INFO    ] [healthcare_agents               ] ========================================================================
+[2026-04-26 03:47:35] [INFO    ] [healthcare_agents               ]   SYSTEM STARTUP — healthcare multi-agent
+[2026-04-26 03:47:35] [INFO    ] [healthcare_agents               ] ========================================================================
+[2026-04-26 03:47:35] [INFO    ] [healthcare_agents.startup       ] Logging system initialised. Log file: C:\Rupesh\IBM-Watson Ai\Summit\healthcare_multi_agent_tutorial\agent_operations.log
+[2026-04-26 04:06:51] [INFO    ] [healthcare_agents               ] ========================================================================
+[2026-04-26 04:06:51] [INFO    ] [healthcare_agents               ]   NEW CASE — patient_id=PT-1001
+[2026-04-26 04:06:51] [INFO    ] [healthcare_agents               ] ========================================================================
+[2026-04-26 04:06:51] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] CASE STARTED for patient_id=PT-1001
+  Overview of the 5-step multi-agent pipeline that will now run:
+    Step 1 — PatientContextAgent   : load and summarise the patient's full record
+    Step 2 — DischargeTranslatorAgent: convert discharge notes to plain language
+    Step 3 — RecoveryMonitoringAgent : triage the patient's symptoms and vitals
+    Step 4 — CareLogisticsAgent      : check medications, appointments, transport
+    Step 5 — Supervisor LLM          : synthesise all 4 outputs into a final summary
+  Symptom report submitted by patient/caregiver: A little tired after walking, but no fever and breathing is normal.
+[2026-04-26 04:06:51] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 1 of 5 — Launching PatientContextAgent
+  This agent calls the 'get_patient_snapshot' tool to load all stored data
+  for patient PT-1001 from the healthcare data repository.
+  It will return a structured summary of demographics, discharge plan,
+  vitals, pharmacy status, and upcoming appointments.
+[2026-04-26 04:06:51] [INFO    ] [healthcare_agents.llm_agents    ] [PatientContextAgent] STARTED for patient_id=PT-1001
+  Purpose: Retrieve the complete patient record from the data store.
+  This includes: demographics, discharge plan, current vitals,
+  pharmacy fill status, and upcoming appointments.
+  This is always the FIRST step — other agents depend on this context.
+[2026-04-26 04:06:51] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Loop initialised.
+  What this agent does: Retrieves and summarises the full patient snapshot: profile, discharge
+plan, current vitals, pharmacy status, and appointments.
+  Tools available to this agent: ['get_patient_snapshot']
+  User prompt being sent to the LLM: Retrieve and summarise the full patient record for patient_id 'PT-1001'. Use the get_patient_snapshot tool.
+[2026-04-26 04:06:51] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Round 1/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:06:53] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Round 1 — The LLM requested 1 tool call(s).
+  The LLM needs real data before it can give a final answer,
+  so it is calling healthcare data tools to retrieve that information.
+[2026-04-26 04:06:53] [INFO    ] [healthcare_agents.llm_agents    ] [PatientContextAgent] TOOL CALLED: get_patient_snapshot
+  Why: The LLM needs specific healthcare data to complete its task.
+  Input arguments passed to the tool: {
+    "patient_id": "PT-1001"
+}
+[2026-04-26 04:06:53] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] TOOL RESULT received from: get_patient_snapshot
+  The tool returned the following data (first 300 chars):
+  {
+    "patient": {
+        "patient_id": "PT-1001",
+        "name": "Margaret Ellis",
+        "literacy_level": "plain_language",
+        "discharge_plan_id": "DP-1001",
+        "care_plan_id": "CP-1001",
+        "pharmacy_plan_id": "RX-1001",
+        "appointment_plan_id": "AP-1001"
+    },
+    "dis
+[2026-04-26 04:06:53] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Round 2/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:07:00] [INFO    ] [healthcare_agents.llm_agents    ] [PatientContextAgent] FINISHED in 2 round(s).
+  The LLM decided it had enough information and returned a final answer.
+  Agent output (first 300 chars): Patient Profile:
+- Name: Margaret Ellis
+- Patient ID: PT-1001
+- Literacy Level: Plain Language
+
+Discharge Plan Summary:
+- Discharged after congestive heart failure stabilization with medication adjustment.
+- Take furosemide 20 mg by mouth every morning.
+- Check weight after waking and before breakfa
+[2026-04-26 04:07:00] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 1 COMPLETE — PatientContextAgent finished.
+  The patient record has been retrieved and summarised.
+  Summary (first 300 chars): Patient Profile:
+- Name: Margaret Ellis
+- Patient ID: PT-1001
+- Literacy Level: Plain Language
+
+Discharge Plan Summary:
+- Discharged after congestive heart failure stabilization with medication adjustment.
+- Take furosemide 20 mg by mouth every morning.
+- Check weight after waking and before breakfa
+[2026-04-26 04:07:00] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 2 of 5 — Launching DischargeTranslatorAgent
+  This agent reads the discharge instructions for patient PT-1001 and rewrites
+  them into plain, patient-friendly language using the
+  'translate_discharge_plan' tool.
+  Output will include: daily checklist, medication schedule, safety tips.
+[2026-04-26 04:07:00] [INFO    ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] STARTED for patient_id=PT-1001
+  Purpose: Convert the hospital discharge instructions into plain, everyday language.
+  Discharge documents are often written in clinical shorthand that patients
+  struggle to understand. This agent rewrites them as:
+    - A daily checklist of tasks
+    - A clear medication schedule
+    - Simple safety warning signs to watch for
+[2026-04-26 04:07:00] [DEBUG   ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] Loop initialised.
+  What this agent does: Converts dense discharge notes into a plain-language daily checklist,
+medication schedule, and safety tips.
+  Tools available to this agent: ['translate_discharge_plan']
+  User prompt being sent to the LLM: Translate the discharge plan for patient_id 'PT-1001' into plain language. Use the translate_discharge_plan tool. Return the result as daily_checklist, medication_schedule, and safety_tips sections.
+[2026-04-26 04:07:00] [DEBUG   ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] Round 1/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:07:01] [DEBUG   ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] Round 1 — The LLM requested 1 tool call(s).
+  The LLM needs real data before it can give a final answer,
+  so it is calling healthcare data tools to retrieve that information.
+[2026-04-26 04:07:01] [INFO    ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] TOOL CALLED: translate_discharge_plan
+  Why: The LLM needs specific healthcare data to complete its task.
+  Input arguments passed to the tool: {
+    "patient_id": "PT-1001"
+}
+[2026-04-26 04:07:01] [DEBUG   ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] TOOL RESULT received from: translate_discharge_plan
+  The tool returned the following data (first 300 chars):
+  {
+    "patient_id": "PT-1001",
+    "checklist": [
+        "Follow this routine: Wakes at 7:00 AM, eats breakfast at 8:00 AM, afternoon walk at 2:00 PM, bedtime at 9:30 PM.",
+        "Check in once in the morning and once in the evening on symptoms.",
+        "Weigh yourself after waking up and befor
+[2026-04-26 04:07:01] [DEBUG   ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] Round 2/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:07:06] [INFO    ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] FINISHED in 2 round(s).
+  The LLM decided it had enough information and returned a final answer.
+  Agent output (first 300 chars): daily_checklist:
+1. Wake up at 7:00 AM.
+2. Have breakfast at 8:00 AM.
+3. Take a walk in the afternoon at 2:00 PM.
+4. Go to bed at 9:30 PM.
+5. Check in once in the morning and once in the evening to monitor symptoms.
+6. Weigh yourself after waking up and before having breakfast.
+
+medication_schedule:
+[2026-04-26 04:07:06] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 2 COMPLETE — DischargeTranslatorAgent finished.
+  Discharge plan translated to plain language.
+  Summary (first 300 chars): daily_checklist:
+1. Wake up at 7:00 AM.
+2. Have breakfast at 8:00 AM.
+3. Take a walk in the afternoon at 2:00 PM.
+4. Go to bed at 9:30 PM.
+5. Check in once in the morning and once in the evening to monitor symptoms.
+6. Weigh yourself after waking up and before having breakfast.
+
+medication_schedule:
+[2026-04-26 04:07:06] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 3 of 5 — Launching RecoveryMonitoringAgent
+  This agent analyses the patient's symptom report alongside their recorded
+  vitals using the 'monitor_recovery_status' tool.
+  It will assign a triage level and flag if a nurse must be notified.
+  Symptom report being evaluated: A little tired after walking, but no fever and breathing is normal.
+[2026-04-26 04:07:06] [INFO    ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] STARTED for patient_id=PT-1001
+  Purpose: Triage the patient's current health status by cross-referencing
+  the symptom report they provided with their recorded vitals.
+  The agent will assign one of three risk levels:
+    - routine            : patient is recovering as expected
+    - watch_closely      : minor concerns, keep monitoring
+    - high_priority_health_shift : escalate to a nurse immediately
+  Symptom report received: A little tired after walking, but no fever and breathing is normal.
+[2026-04-26 04:07:06] [DEBUG   ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] Loop initialised.
+  What this agent does: Evaluates symptom reports and biometrics to triage the patient as
+routine, watch_closely, or high_priority_health_shift.
+  Tools available to this agent: ['monitor_recovery_status']
+  User prompt being sent to the LLM: Assess the recovery status for patient_id 'PT-1001'. Symptom report: "A little tired after walking, but no fever and breathing is normal.". Use the monitor_recovery_status tool. State the triage_level
+[2026-04-26 04:07:06] [DEBUG   ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] Round 1/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:07:08] [DEBUG   ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] Round 1 — The LLM requested 1 tool call(s).
+  The LLM needs real data before it can give a final answer,
+  so it is calling healthcare data tools to retrieve that information.
+[2026-04-26 04:07:08] [INFO    ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] TOOL CALLED: monitor_recovery_status
+  Why: The LLM needs specific healthcare data to complete its task.
+  Input arguments passed to the tool: {
+    "patient_id": "PT-1001",
+    "symptom_report": "A little tired after walking, but no fever and breathing is normal."
+}
+[2026-04-26 04:07:08] [DEBUG   ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] TOOL RESULT received from: monitor_recovery_status
+  The tool returned the following data (first 300 chars):
+  {
+    "patient_id": "PT-1001",
+    "triage_level": "routine",
+    "concerning_signals": [],
+    "recommended_action": "Continue the routine recovery plan and document the check-in as stable.",
+    "escalate_to_nurse": false
+}
+[2026-04-26 04:07:08] [DEBUG   ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] Round 2/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:07:09] [INFO    ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] FINISHED in 2 round(s).
+  The LLM decided it had enough information and returned a final answer.
+  Agent output (first 300 chars): The triage level for patient PT-1001 is routine. There are no concerning signals in the symptom report: "A little tired after walking, but no fever and breathing is normal." No nurse escalation is required at this time. Continue the routine recovery plan and document the check-in as stable.
+[2026-04-26 04:07:09] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 3 COMPLETE — RecoveryMonitoringAgent finished.
+  Triage assessment complete. Risk level determined.
+  Summary (first 300 chars): The triage level for patient PT-1001 is routine. There are no concerning signals in the symptom report: "A little tired after walking, but no fever and breathing is normal." No nurse escalation is required at this time. Continue the routine recovery plan and document the check-in as stable.
+[2026-04-26 04:07:09] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 4 of 5 — Launching CareLogisticsAgent
+  This agent uses the 'coordinate_care_logistics' tool to check whether
+  the patient's prescriptions are filled, appointments are booked, and
+  transportation is arranged.
+  If any barriers are found it will call 'search_support_services'
+  to find alternative pharmacies, transport, or community support options.
+[2026-04-26 04:07:09] [INFO    ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] STARTED for patient_id=PT-1001
+  Purpose: Identify and resolve any practical barriers preventing the patient
+  from following their recovery plan. This covers:
+    - Medication: Are prescriptions filled? Any delays or insurance issues?
+    - Appointments: Are follow-ups scheduled? Any missed visits?
+    - Transport: Can the patient get to appointments?
+  If barriers are found, this agent will search for alternative services
+  (nearby pharmacies, transport options, community support).
+[2026-04-26 04:07:09] [DEBUG   ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] Loop initialised.
+  What this agent does: Reviews medication fill status, transportation readiness, and follow-up
+scheduling barriers, then produces a coordination plan.
+  Tools available to this agent: ['coordinate_care_logistics', 'search_support_services']
+  User prompt being sent to the LLM: Review care logistics for patient_id 'PT-1001'. Use the coordinate_care_logistics tool. If medication or transport barriers are found, use search_support_services to find alternatives. Return medicati
+[2026-04-26 04:07:09] [DEBUG   ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] Round 1/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:07:10] [DEBUG   ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] Round 1 — The LLM requested 1 tool call(s).
+  The LLM needs real data before it can give a final answer,
+  so it is calling healthcare data tools to retrieve that information.
+[2026-04-26 04:07:10] [INFO    ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] TOOL CALLED: coordinate_care_logistics
+  Why: The LLM needs specific healthcare data to complete its task.
+  Input arguments passed to the tool: {
+    "patient_id": "PT-1001"
+}
+[2026-04-26 04:07:10] [DEBUG   ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] TOOL RESULT received from: coordinate_care_logistics
+  The tool returned the following data (first 300 chars):
+  {
+    "patient_id": "PT-1001",
+    "medication_status": [
+        "furosemide 20 mg is ready for pickup."
+    ],
+    "appointment_status": [
+        "Cardiology follow-up on 2026-04-15T10:30:00 with transport status confirmed."
+    ],
+    "barriers": [],
+    "resolved_actions": []
+}
+[2026-04-26 04:07:10] [DEBUG   ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] Round 2/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:07:13] [INFO    ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] FINISHED in 2 round(s).
+  The LLM decided it had enough information and returned a final answer.
+  Agent output (first 300 chars): The care logistics for patient_id 'PT-1001' have been reviewed. Here are the details:
+
+- Medication Status: Furosemide 20 mg is ready for pickup.
+- Appointment Status: Cardiology follow-up scheduled on 2026-04-15 at 10:30 AM with transportation confirmed.
+- Barriers: No barriers detected at this tim
+[2026-04-26 04:07:13] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 4 COMPLETE — CareLogisticsAgent finished.
+  Logistics barriers identified and action plan prepared.
+  Summary (first 300 chars): The care logistics for patient_id 'PT-1001' have been reviewed. Here are the details:
+
+- Medication Status: Furosemide 20 mg is ready for pickup.
+- Appointment Status: Cardiology follow-up scheduled on 2026-04-15 at 10:30 AM with transportation confirmed.
+- Barriers: No barriers detected at this tim
+[2026-04-26 04:07:13] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 5 of 5 — Calling Supervisor LLM
+  All four specialist agent outputs are now combined and sent to the
+  Supervisor LLM (IBM WatsonX Granite) in a single request.
+  The Supervisor will:
+    - Determine the overall risk status
+    - Highlight any nurse escalation requirement
+    - List the top immediate actions for clinical staff
+  No tools are called at this step — this is pure synthesis.
+[2026-04-26 04:07:17] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 5 COMPLETE — Supervisor LLM produced final summary.
+  This is the response that will be shown to clinical staff in the UI.
+  Final summary (first 400 chars): Recovery Summary for Margaret Ellis (PT-1001):
+
+Overall Risk Status: Routine
+
+Nurse Escalation: Not required at this time.
+
+Immediate Actions:
+1. Take furosemide 20 mg by mouth every morning at 7:00 AM with water before breakfast.
+2. Check weight after waking and before breakfast. If weight increases by more than 2 pounds in 24 hours, call cardiology.
+3. Limit sodium intake to less than 2 grams da
+[2026-04-26 04:07:17] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] CASE COMPLETE — patient_id=PT-1001
+  Total time taken      : 26.56 seconds
+  Total tool calls made : 4 (across all 4 specialist agents)
+  The final summary has been returned and is ready to display.
+[2026-04-26 04:07:17] [INFO    ] [healthcare_agents               ] ========================================================================
+[2026-04-26 04:09:56] [INFO    ] [healthcare_agents               ] ========================================================================
+[2026-04-26 04:09:56] [INFO    ] [healthcare_agents               ]   NEW CASE — patient_id=PT-1001
+[2026-04-26 04:09:56] [INFO    ] [healthcare_agents               ] ========================================================================
+[2026-04-26 04:09:56] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] CASE STARTED for patient_id=PT-1001
+  Overview of the 5-step multi-agent pipeline that will now run:
+    Step 1 — PatientContextAgent   : load and summarise the patient's full record
+    Step 2 — DischargeTranslatorAgent: convert discharge notes to plain language
+    Step 3 — RecoveryMonitoringAgent : triage the patient's symptoms and vitals
+    Step 4 — CareLogisticsAgent      : check medications, appointments, transport
+    Step 5 — Supervisor LLM          : synthesise all 4 outputs into a final summary
+  Symptom report submitted by patient/caregiver: A little tired after walking, but no fever and breathing is normal.
+[2026-04-26 04:09:56] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 1 of 5 — Launching PatientContextAgent
+  This agent calls the 'get_patient_snapshot' tool to load all stored data
+  for patient PT-1001 from the healthcare data repository.
+  It will return a structured summary of demographics, discharge plan,
+  vitals, pharmacy status, and upcoming appointments.
+[2026-04-26 04:09:56] [INFO    ] [healthcare_agents.llm_agents    ] [PatientContextAgent] STARTED for patient_id=PT-1001
+  Purpose: Retrieve the complete patient record from the data store.
+  This includes: demographics, discharge plan, current vitals,
+  pharmacy fill status, and upcoming appointments.
+  This is always the FIRST step — other agents depend on this context.
+[2026-04-26 04:09:56] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Loop initialised.
+  What this agent does: Retrieves and summarises the full patient snapshot: profile, discharge
+plan, current vitals, pharmacy status, and appointments.
+  Tools available to this agent: ['get_patient_snapshot']
+  User prompt being sent to the LLM: Retrieve and summarise the full patient record for patient_id 'PT-1001'. Use the get_patient_snapshot tool.
+[2026-04-26 04:09:56] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Round 1/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:09:57] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Round 1 — The LLM requested 1 tool call(s).
+  The LLM needs real data before it can give a final answer,
+  so it is calling healthcare data tools to retrieve that information.
+[2026-04-26 04:09:57] [INFO    ] [healthcare_agents.llm_agents    ] [PatientContextAgent] TOOL CALLED: get_patient_snapshot
+  Why: The LLM needs specific healthcare data to complete its task.
+  Input arguments passed to the tool: {
+    "patient_id": "PT-1001"
+}
+[2026-04-26 04:09:57] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] TOOL RESULT received from: get_patient_snapshot
+  The tool returned the following data (first 300 chars):
+  {
+    "patient": {
+        "patient_id": "PT-1001",
+        "name": "Margaret Ellis",
+        "literacy_level": "plain_language",
+        "discharge_plan_id": "DP-1001",
+        "care_plan_id": "CP-1001",
+        "pharmacy_plan_id": "RX-1001",
+        "appointment_plan_id": "AP-1001"
+    },
+    "dis
+[2026-04-26 04:09:57] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Round 2/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:10:00] [INFO    ] [healthcare_agents.llm_agents    ] [PatientContextAgent] FINISHED in 2 round(s).
+  The LLM decided it had enough information and returned a final answer.
+  Agent output (first 300 chars): Patient Profile:
+- Patient ID: PT-1001
+- Name: Margaret Ellis
+- Literacy Level: Plain Language
+
+Discharge Plan Summary:
+- Discharge Plan ID: DP-1001
+- Summary: Discharged after congestive heart failure stabilization with medication adjustment.
+- Clinical Note: Take furosemide 20 mg by mouth every mo
+[2026-04-26 04:10:00] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 1 COMPLETE — PatientContextAgent finished.
+  The patient record has been retrieved and summarised.
+  Summary (first 300 chars): Patient Profile:
+- Patient ID: PT-1001
+- Name: Margaret Ellis
+- Literacy Level: Plain Language
+
+Discharge Plan Summary:
+- Discharge Plan ID: DP-1001
+- Summary: Discharged after congestive heart failure stabilization with medication adjustment.
+- Clinical Note: Take furosemide 20 mg by mouth every mo
+[2026-04-26 04:10:00] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 2 of 5 — Launching DischargeTranslatorAgent
+  This agent reads the discharge instructions for patient PT-1001 and rewrites
+  them into plain, patient-friendly language using the
+  'translate_discharge_plan' tool.
+  Output will include: daily checklist, medication schedule, safety tips.
+[2026-04-26 04:10:00] [INFO    ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] STARTED for patient_id=PT-1001
+  Purpose: Convert the hospital discharge instructions into plain, everyday language.
+  Discharge documents are often written in clinical shorthand that patients
+  struggle to understand. This agent rewrites them as:
+    - A daily checklist of tasks
+    - A clear medication schedule
+    - Simple safety warning signs to watch for
+[2026-04-26 04:10:00] [DEBUG   ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] Loop initialised.
+  What this agent does: Converts dense discharge notes into a plain-language daily checklist,
+medication schedule, and safety tips.
+  Tools available to this agent: ['translate_discharge_plan']
+  User prompt being sent to the LLM: Translate the discharge plan for patient_id 'PT-1001' into plain language. Use the translate_discharge_plan tool. Return the result as daily_checklist, medication_schedule, and safety_tips sections.
+[2026-04-26 04:10:00] [DEBUG   ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] Round 1/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:10:01] [DEBUG   ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] Round 1 — The LLM requested 1 tool call(s).
+  The LLM needs real data before it can give a final answer,
+  so it is calling healthcare data tools to retrieve that information.
+[2026-04-26 04:10:01] [INFO    ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] TOOL CALLED: translate_discharge_plan
+  Why: The LLM needs specific healthcare data to complete its task.
+  Input arguments passed to the tool: {
+    "patient_id": "PT-1001"
+}
+[2026-04-26 04:10:01] [DEBUG   ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] TOOL RESULT received from: translate_discharge_plan
+  The tool returned the following data (first 300 chars):
+  {
+    "patient_id": "PT-1001",
+    "checklist": [
+        "Follow this routine: Wakes at 7:00 AM, eats breakfast at 8:00 AM, afternoon walk at 2:00 PM, bedtime at 9:30 PM.",
+        "Check in once in the morning and once in the evening on symptoms.",
+        "Weigh yourself after waking up and befor
+[2026-04-26 04:10:01] [DEBUG   ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] Round 2/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:10:05] [INFO    ] [healthcare_agents.llm_agents    ] [DischargeTranslatorAgent] FINISHED in 2 round(s).
+  The LLM decided it had enough information and returned a final answer.
+  Agent output (first 300 chars): daily_checklist:
+1. Wake up at 7:00 AM.
+2. Have breakfast at 8:00 AM.
+3. Take a walk in the afternoon at 2:00 PM.
+4. Go to bed at 9:30 PM.
+5. Check in once in the morning and once in the evening to monitor symptoms.
+6. Weigh yourself after waking up and before having breakfast.
+
+medication_schedule:
+[2026-04-26 04:10:05] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 2 COMPLETE — DischargeTranslatorAgent finished.
+  Discharge plan translated to plain language.
+  Summary (first 300 chars): daily_checklist:
+1. Wake up at 7:00 AM.
+2. Have breakfast at 8:00 AM.
+3. Take a walk in the afternoon at 2:00 PM.
+4. Go to bed at 9:30 PM.
+5. Check in once in the morning and once in the evening to monitor symptoms.
+6. Weigh yourself after waking up and before having breakfast.
+
+medication_schedule:
+[2026-04-26 04:10:05] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 3 of 5 — Launching RecoveryMonitoringAgent
+  This agent analyses the patient's symptom report alongside their recorded
+  vitals using the 'monitor_recovery_status' tool.
+  It will assign a triage level and flag if a nurse must be notified.
+  Symptom report being evaluated: A little tired after walking, but no fever and breathing is normal.
+[2026-04-26 04:10:05] [INFO    ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] STARTED for patient_id=PT-1001
+  Purpose: Triage the patient's current health status by cross-referencing
+  the symptom report they provided with their recorded vitals.
+  The agent will assign one of three risk levels:
+    - routine            : patient is recovering as expected
+    - watch_closely      : minor concerns, keep monitoring
+    - high_priority_health_shift : escalate to a nurse immediately
+  Symptom report received: A little tired after walking, but no fever and breathing is normal.
+[2026-04-26 04:10:05] [DEBUG   ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] Loop initialised.
+  What this agent does: Evaluates symptom reports and biometrics to triage the patient as
+routine, watch_closely, or high_priority_health_shift.
+  Tools available to this agent: ['monitor_recovery_status']
+  User prompt being sent to the LLM: Assess the recovery status for patient_id 'PT-1001'. Symptom report: "A little tired after walking, but no fever and breathing is normal.". Use the monitor_recovery_status tool. State the triage_level
+[2026-04-26 04:10:05] [DEBUG   ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] Round 1/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:10:08] [DEBUG   ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] Round 1 — The LLM requested 1 tool call(s).
+  The LLM needs real data before it can give a final answer,
+  so it is calling healthcare data tools to retrieve that information.
+[2026-04-26 04:10:08] [INFO    ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] TOOL CALLED: monitor_recovery_status
+  Why: The LLM needs specific healthcare data to complete its task.
+  Input arguments passed to the tool: {
+    "patient_id": "PT-1001",
+    "symptom_report": "A little tired after walking, but no fever and breathing is normal."
+}
+[2026-04-26 04:10:08] [DEBUG   ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] TOOL RESULT received from: monitor_recovery_status
+  The tool returned the following data (first 300 chars):
+  {
+    "patient_id": "PT-1001",
+    "triage_level": "routine",
+    "concerning_signals": [],
+    "recommended_action": "Continue the routine recovery plan and document the check-in as stable.",
+    "escalate_to_nurse": false
+}
+[2026-04-26 04:10:08] [DEBUG   ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] Round 2/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:10:10] [INFO    ] [healthcare_agents.llm_agents    ] [RecoveryMonitoringAgent] FINISHED in 2 round(s).
+  The LLM decided it had enough information and returned a final answer.
+  Agent output (first 300 chars): The triage level for patient_id 'PT-1001' is 'routine'. There are no concerning signals in the symptom report: "A little tired after walking, but no fever and breathing is normal." No nurse escalation is required at this time. Continue the routine recovery plan and document the check-in as stable.
+[2026-04-26 04:10:10] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 3 COMPLETE — RecoveryMonitoringAgent finished.
+  Triage assessment complete. Risk level determined.
+  Summary (first 300 chars): The triage level for patient_id 'PT-1001' is 'routine'. There are no concerning signals in the symptom report: "A little tired after walking, but no fever and breathing is normal." No nurse escalation is required at this time. Continue the routine recovery plan and document the check-in as stable.
+[2026-04-26 04:10:10] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 4 of 5 — Launching CareLogisticsAgent
+  This agent uses the 'coordinate_care_logistics' tool to check whether
+  the patient's prescriptions are filled, appointments are booked, and
+  transportation is arranged.
+  If any barriers are found it will call 'search_support_services'
+  to find alternative pharmacies, transport, or community support options.
+[2026-04-26 04:10:10] [INFO    ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] STARTED for patient_id=PT-1001
+  Purpose: Identify and resolve any practical barriers preventing the patient
+  from following their recovery plan. This covers:
+    - Medication: Are prescriptions filled? Any delays or insurance issues?
+    - Appointments: Are follow-ups scheduled? Any missed visits?
+    - Transport: Can the patient get to appointments?
+  If barriers are found, this agent will search for alternative services
+  (nearby pharmacies, transport options, community support).
+[2026-04-26 04:10:10] [DEBUG   ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] Loop initialised.
+  What this agent does: Reviews medication fill status, transportation readiness, and follow-up
+scheduling barriers, then produces a coordination plan.
+  Tools available to this agent: ['coordinate_care_logistics', 'search_support_services']
+  User prompt being sent to the LLM: Review care logistics for patient_id 'PT-1001'. Use the coordinate_care_logistics tool. If medication or transport barriers are found, use search_support_services to find alternatives. Return medicati
+[2026-04-26 04:10:10] [DEBUG   ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] Round 1/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:10:11] [DEBUG   ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] Round 1 — The LLM requested 1 tool call(s).
+  The LLM needs real data before it can give a final answer,
+  so it is calling healthcare data tools to retrieve that information.
+[2026-04-26 04:10:11] [INFO    ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] TOOL CALLED: coordinate_care_logistics
+  Why: The LLM needs specific healthcare data to complete its task.
+  Input arguments passed to the tool: {
+    "patient_id": "PT-1001"
+}
+[2026-04-26 04:10:11] [DEBUG   ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] TOOL RESULT received from: coordinate_care_logistics
+  The tool returned the following data (first 300 chars):
+  {
+    "patient_id": "PT-1001",
+    "medication_status": [
+        "furosemide 20 mg is ready for pickup."
+    ],
+    "appointment_status": [
+        "Cardiology follow-up on 2026-04-15T10:30:00 with transport status confirmed."
+    ],
+    "barriers": [],
+    "resolved_actions": []
+}
+[2026-04-26 04:10:11] [DEBUG   ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] Round 2/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
+[2026-04-26 04:10:15] [INFO    ] [healthcare_agents.llm_agents    ] [CareLogisticsAgent] FINISHED in 2 round(s).
+  The LLM decided it had enough information and returned a final answer.
+  Agent output (first 300 chars): The care logistics for patient_id 'PT-1001' show the following:
+
+- Medication Status: Furosemide 20 mg is ready for pickup.
+- Appointment Status: Cardiology follow-up scheduled for 2026-04-15 at 10:30 AM with transportation confirmed.
+
+No barriers were detected in the medication fill or transportati
+[2026-04-26 04:10:15] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 4 COMPLETE — CareLogisticsAgent finished.
+  Logistics barriers identified and action plan prepared.
+  Summary (first 300 chars): The care logistics for patient_id 'PT-1001' show the following:
+
+- Medication Status: Furosemide 20 mg is ready for pickup.
+- Appointment Status: Cardiology follow-up scheduled for 2026-04-15 at 10:30 AM with transportation confirmed.
+
+No barriers were detected in the medication fill or transportati
+[2026-04-26 04:10:15] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 5 of 5 — Calling Supervisor LLM
+  All four specialist agent outputs are now combined and sent to the
+  Supervisor LLM (IBM WatsonX Granite) in a single request.
+  The Supervisor will:
+    - Determine the overall risk status
+    - Highlight any nurse escalation requirement
+    - List the top immediate actions for clinical staff
+  No tools are called at this step — this is pure synthesis.
+[2026-04-26 04:10:21] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 5 COMPLETE — Supervisor LLM produced final summary.
+  This is the response that will be shown to clinical staff in the UI.
+  Final summary (first 400 chars): Recovery Summary for Margaret Ellis (PT-1001):
+
+Overall Risk Status: Routine
+
+Immediate Actions:
+1. Pick up furosemide 20 mg prescription at the pharmacy.
+2. Follow the daily checklist:
+   - Wake up at 7:00 AM.
+   - Have breakfast at 8:00 AM.
+   - Take a walk in the afternoon at 2:00 PM.
+   - Go to bed at 9:30 PM.
+   - Check in once in the morning and once in the evening to monitor symptoms.
+   - 
+[2026-04-26 04:10:21] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] CASE COMPLETE — patient_id=PT-1001
+  Total time taken      : 24.79 seconds
+  Total tool calls made : 4 (across all 4 specialist agents)
+  The final summary has been returned and is ready to display.
+[2026-04-26 04:10:21] [INFO    ] [healthcare_agents               ] ========================================================================

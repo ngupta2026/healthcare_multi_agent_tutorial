@@ -218,6 +218,8 @@ def main() -> None:
         default_report = {
             "PT-1001": "A little tired after walking, but no fever and breathing is normal.",
             "PT-2002": "My leg is more swollen and I missed my antibiotic pickup.",
+            "PT-1002": "I feel short of breath and dizzy this morning.",
+            "PT-1003": "My knee wound looks clean and the pain is manageable, but I feel a little stiff when walking.",
         }.get(patient_id, "")
 
         symptom_report = st.text_area(
@@ -432,7 +434,8 @@ def main() -> None:
     if watsonx_result:
         with st.expander("watsonx Tool Trace", expanded=True):
             for call in watsonx_result.tool_trace:
-                st.write(f"Tool: `{call['tool_name']}`")
+                label = call.get("tool") or call.get("tool_name") or call.get("name", "unknown")
+                st.write(f"Tool: `{label}`")
                 st.json(call)
     elif watsonx_error:
         st.error(f"watsonx invocation failed: {watsonx_error}")

@@ -14,5 +14,29 @@
     "temperature_f": 100.6,
     "systolic_bp": 118,
     "weight_delta_lb": 0.0
+  },
+  {
+    "patient_id": "PT-1002",
+    "heart_rate": 88,
+    "oxygen_saturation": 93,
+    "temperature_f": null,
+    "systolic_bp": 152,
+    "weight_delta_lb": 0.0
+  },
+  {
+    "patient_id": "PT-1003",
+    "heart_rate": null,
+    "oxygen_saturation": null,
+    "temperature_f": 98.2,
+    "systolic_bp": null,
+    "weight_delta_lb": 0.0
+  },
+  {
+    "patient_id": "PT-3003",
+    "heart_rate": 112,
+    "oxygen_saturation": 89,
+    "temperature_f": 99.9,
+    "systolic_bp": null,
+    "weight_delta_lb": 0.0
   }
 ]
