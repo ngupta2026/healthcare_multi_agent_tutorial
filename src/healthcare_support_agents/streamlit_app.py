@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import asdict, replace
 from typing import Any
 
@@ -198,6 +199,72 @@ def main() -> None:
         layout="wide",
     )
 
+    # ---------------------------------------------------------------------------
+    # Google Authentication gate — handles both null and expired sessions.
+    #
+    # NULL SESSION  : user.is_logged_in is False  → show login page, st.stop()
+    # EXPIRED SESSION: logged in but idle > SESSION_TIMEOUT_HOURS → st.logout()
+    #
+    # The gate is a no-op when [auth] is absent or still has REPLACE placeholders
+    # so the app works locally without OAuth configured.
+    # ---------------------------------------------------------------------------
+    _SESSION_TIMEOUT_HOURS = 8  # idle timeout; set to 0 to disable
+
+    try:
+        auth_configured = (
+            "auth" in st.secrets
+            and "google" in st.secrets["auth"]
+            and not str(st.secrets["auth"]["cookie_secret"]).startswith("REPLACE")
+            and not str(st.secrets["auth"]["google"]["client_id"]).startswith("REPLACE")
+        )
+    except Exception:
+        auth_configured = False
+
+    current_user = None
+    if auth_configured:
+        user = st.user  # st.experimental_user was removed; st.user is the current API
+        current_user = user
+
+        # --- NULL SESSION: not logged in at all ---
+        if not user.is_logged_in:
+            st.set_page_config(
+                page_title="Sign in — Healthcare Coordinator",
+                page_icon=":hospital:",
+                layout="centered",
+            ) if False else None  # page_config already set above; skip duplicate
+            st.markdown(
+                """
+                <div style="display:flex;flex-direction:column;align-items:center;padding-top:4rem;">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/"
+                           "Google_2015_logo.svg/640px-Google_2015_logo.svg.png"
+                       width="110" style="margin-bottom:1.5rem;" />
+                  <h2 style="margin-bottom:0.4rem;">Healthcare Multi-Agent Coordinator</h2>
+                  <p style="color:#555;margin-bottom:2rem;text-align:center;max-width:420px;">
+                    Sign in with your Google account to access patient care workflows,
+                    discharge planning, and risk monitoring.
+                  </p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            st.login("google")
+            st.stop()
+
+        # --- EXPIRED SESSION: logged in but idle too long ---
+        now = time.time()
+        if _SESSION_TIMEOUT_HOURS > 0:
+            last_active = st.session_state.get("_auth_last_active", now)
+            idle_hours = (now - last_active) / 3600
+            if idle_hours > _SESSION_TIMEOUT_HOURS:
+                st.session_state.clear()
+                st.warning("Your session has expired. Please sign in again.")
+                st.login("google")
+                st.logout()
+                st.stop()
+        st.session_state["_auth_last_active"] = now
+
+        # Authenticated user controls are rendered in the page header (top-right).
+
     orchestrator, repository = load_orchestrator()
     watsonx_orchestrator = load_watsonx_orchestrator(repository)
     config = AppConfig.from_env()
@@ -208,6 +275,153 @@ def main() -> None:
 
     st.title("Healthcare Multi-Agent Care Coordinator")
     st.caption("Interactive demo for discharge translation, symptom monitoring, logistics coordination, and nurse escalation.")
+
+    if auth_configured and current_user is not None and current_user.is_logged_in:
+        # Handle sign-out via query param (triggered from the HTML tooltip link)
+        if st.query_params.get("signout") == "1":
+            st.query_params.clear()
+            st.session_state.clear()
+            st.logout()
+
+        pic = getattr(current_user, "picture", None) or getattr(current_user, "avatar_url", None)
+        name = getattr(current_user, "name", None) or getattr(current_user, "email", "User")
+        email = getattr(current_user, "email", "")
+        initials = "".join(w[0].upper() for w in (name or "U").split()[:2])
+
+        # Avatar button: photo if available, else colored initials circle
+        if pic:
+            avatar_btn_html = f'<img src="{pic}" class="hc-avatar-img" alt="{initials}" />'
+            avatar_large_html = f'<img src="{pic}" class="hc-drop-photo" alt="{initials}" />'
+        else:
+            avatar_btn_html = f'<span class="hc-avatar-init">{initials}</span>'
+            avatar_large_html = (
+                f'<div class="hc-drop-initials">{initials}</div>'
+            )
+
+        st.markdown(
+            f"""
+            <style>
+            /* ── Profile widget: fixed in top toolbar, left of Deploy button ─── */
+            .hc-profile-wrap {{
+                position: fixed;
+                top: 0.42rem;
+                right: 9.2rem;
+                z-index: 99999999;
+            }}
+            .hc-avatar-btn {{
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                overflow: hidden;
+                cursor: pointer;
+                border: 2px solid #d0d5dd;
+                background: #4285F4;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }}
+            .hc-avatar-img {{
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                object-fit: cover;
+                display: block;
+            }}
+            .hc-avatar-init {{
+                color: white;
+                font-weight: 700;
+                font-size: 0.85rem;
+                font-family: sans-serif;
+                line-height: 1;
+            }}
+            /* ── Hover dropdown card ────────────────────────────────────────── */
+            .hc-profile-dropdown {{
+                display: none;
+                position: absolute;
+                top: 44px;
+                right: 0;
+                background: #ffffff;
+                border: 1px solid #e0e4ea;
+                border-radius: 14px;
+                box-shadow: 0 10px 32px rgba(0,0,0,0.14);
+                padding: 1.2rem 1.4rem 1rem;
+                min-width: 230px;
+                text-align: center;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            }}
+            .hc-profile-wrap:hover .hc-profile-dropdown {{
+                display: block;
+            }}
+            .hc-drop-photo {{
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                object-fit: cover;
+                margin-bottom: 0.6rem;
+                border: 2px solid #e8eaed;
+            }}
+            .hc-drop-initials {{
+                width: 60px;
+                height: 60px;
+                border-radius: 50%;
+                background: #4285F4;
+                color: white;
+                font-weight: 700;
+                font-size: 1.3rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 0.6rem;
+            }}
+            .hc-drop-name {{
+                font-weight: 700;
+                font-size: 0.95rem;
+                color: #1a1a2e;
+                margin-bottom: 0.25rem;
+            }}
+            .hc-drop-email {{
+                font-size: 0.8rem;
+                color: #5b6472;
+                margin-bottom: 0.8rem;
+                word-break: break-all;
+            }}
+            .hc-drop-divider {{
+                border: none;
+                border-top: 1px solid #eeeff2;
+                margin: 0.5rem 0 0.7rem;
+            }}
+            .hc-signout-link {{
+                display: inline-block;
+                padding: 0.38rem 1.4rem;
+                border: 1px solid #d0d3d9;
+                border-radius: 7px;
+                font-size: 0.84rem;
+                color: #333;
+                text-decoration: none;
+                background: #fafafa;
+            }}
+            .hc-signout-link:hover {{
+                background: #f0f0f0;
+                color: #111;
+                text-decoration: none;
+            }}
+            </style>
+
+            <div class="hc-profile-wrap">
+              <div class="hc-avatar-btn" title="Account">
+                {avatar_btn_html}
+              </div>
+              <div class="hc-profile-dropdown">
+                {avatar_large_html}
+                <div class="hc-drop-name">{name}</div>
+                <div class="hc-drop-email">{email}</div>
+                <hr class="hc-drop-divider" />
+                <a href="?signout=1" class="hc-signout-link">Sign out</a>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with st.sidebar:
         st.subheader("Case Setup")

@@ -1,1 +1,2 @@
 streamlit>=1.44.0
+Authlib>=1.3.2
