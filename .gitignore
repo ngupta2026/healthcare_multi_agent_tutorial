@@ -5,4 +5,6 @@ __pycache__/
 *.egg-info/
 .env
 settings.json
+.streamlit/secrets.toml__pycache__/
 .streamlit/secrets.toml
+agent_operations.log

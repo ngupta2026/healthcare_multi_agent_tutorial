@@ -2480,3 +2480,32 @@ plan, current vitals, pharmacy status, and appointments.
 [2026-04-26 23:00:11] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Round 1/4 — Sending conversation to IBM WatsonX LLM.
   The LLM will decide: either call one of the tools to fetch data,
   or return a final text response if it has enough information.
+[2026-04-27 13:17:12] [INFO    ] [healthcare_agents               ] ========================================================================
+[2026-04-27 13:17:12] [INFO    ] [healthcare_agents               ]   NEW CASE — patient_id=PT-2002
+[2026-04-27 13:17:12] [INFO    ] [healthcare_agents               ] ========================================================================
+[2026-04-27 13:17:12] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] CASE STARTED for patient_id=PT-2002
+  Overview of the 5-step multi-agent pipeline that will now run:
+    Step 1 — PatientContextAgent   : load and summarise the patient's full record
+    Step 2 — DischargeTranslatorAgent: convert discharge notes to plain language
+    Step 3 — RecoveryMonitoringAgent : triage the patient's symptoms and vitals
+    Step 4 — CareLogisticsAgent      : check medications, appointments, transport
+    Step 5 — Supervisor LLM          : synthesise all 4 outputs into a final summary
+  Symptom report submitted by patient/caregiver: My leg is more swollen and I missed my antibiotic pickup.
+[2026-04-27 13:17:12] [INFO    ] [healthcare_agents.watsonx_orchestrator] [WatsonxCareOrchestrator] STEP 1 of 5 — Launching PatientContextAgent
+  This agent calls the 'get_patient_snapshot' tool to load all stored data
+  for patient PT-2002 from the healthcare data repository.
+  It will return a structured summary of demographics, discharge plan,
+  vitals, pharmacy status, and upcoming appointments.
+[2026-04-27 13:17:12] [INFO    ] [healthcare_agents.llm_agents    ] [PatientContextAgent] STARTED for patient_id=PT-2002
+  Purpose: Retrieve the complete patient record from the data store.
+  This includes: demographics, discharge plan, current vitals,
+  pharmacy fill status, and upcoming appointments.
+  This is always the FIRST step — other agents depend on this context.
+[2026-04-27 13:17:12] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Loop initialised.
+  What this agent does: Retrieves and summarises the full patient snapshot: profile, discharge
+plan, current vitals, pharmacy status, and appointments.
+  Tools available to this agent: ['get_patient_snapshot']
+  User prompt being sent to the LLM: Retrieve and summarise the full patient record for patient_id 'PT-2002'. Use the get_patient_snapshot tool.
+[2026-04-27 13:17:12] [DEBUG   ] [healthcare_agents.llm_agents    ] [PatientContextAgent] Round 1/4 — Sending conversation to IBM WatsonX LLM.
+  The LLM will decide: either call one of the tools to fetch data,
+  or return a final text response if it has enough information.
