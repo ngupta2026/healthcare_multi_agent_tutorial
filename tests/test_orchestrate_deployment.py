@@ -40,7 +40,7 @@ class OrchestrateDeploymentTests(unittest.TestCase):
             repo_root=repo_root,
             tool_file=repo_root / "src" / "healthcare_support_agents" / "orchestrate_adk_tools.py",
             requirements_file=repo_root / "requirements-orchestrate.txt",
-            agent_spec_file=repo_root / "deploy" / "orchestrate" / "healthcare_care_coordinator.agent.yaml",
+            agent_spec_file=repo_root / "deploy" / "orchestrate" / "ai_healthcare_coordinator.agent.yaml",
             package_root=repo_root,
         )
 
@@ -57,8 +57,8 @@ class OrchestrateDeploymentTests(unittest.TestCase):
         self.assertIn(str(paths.agent_spec_file), agent_command)
 
     def test_chat_command_reasoning_flag(self) -> None:
-        base = chat_command("Healthcare_Care_Coordinator", "Help me", include_reasoning=False)
-        with_reasoning = chat_command("Healthcare_Care_Coordinator", "Help me", include_reasoning=True)
+        base = chat_command("AI_Healthcare_Coordinator", "Help me", include_reasoning=False)
+        with_reasoning = chat_command("AI_Healthcare_Coordinator", "Help me", include_reasoning=True)
         self.assertNotIn("--include-reasoning", base)
         self.assertIn("--include-reasoning", with_reasoning)
 
@@ -220,7 +220,7 @@ class OrchestrateDeploymentTests(unittest.TestCase):
             serper_api_key=None,
             orchestrate_api_endpoint="https://api.dl.watson-orchestrate.ibm.com/instances/example",
             orchestrate_auth_type="mcsp",
-            orchestrate_agent_name="Healthcare_Care_Coordinator",
+            orchestrate_agent_name="AI_Healthcare_Coordinator",
         )
 
         class FakeResponse:
@@ -232,7 +232,7 @@ class OrchestrateDeploymentTests(unittest.TestCase):
 
             def read(self):
                 return (
-                    b'{"native":[{"name":"Healthcare_Care_Coordinator","id":"agent-123"}],'
+                    b'{"native":[{"name":"AI_Healthcare_Coordinator","id":"agent-123"}],'
                     b'"assistant":[],"external":[]}'
                 )
 
@@ -273,7 +273,7 @@ class OrchestrateDeploymentTests(unittest.TestCase):
                 return FakeResponse('{"token":"fresh-token","expires_in":1200}')
 
             if url.endswith("/v1/orchestrate/agents") or url.endswith("/api/v1/orchestrate/agents"):
-                return FakeResponse('{"native":[{"name":"Healthcare_Care_Coordinator","id":"agent-123"}]}')
+                return FakeResponse('{"native":[{"name":"AI_Healthcare_Coordinator","id":"agent-123"}]}')
 
             if url.endswith("/v1/orchestrate/runs") or url.endswith("/api/v1/orchestrate/runs"):
                 if auth == "Bearer stale-token":
@@ -325,7 +325,7 @@ class OrchestrateDeploymentTests(unittest.TestCase):
             url = req.full_url
 
             if url.endswith("/v1/orchestrate/agents") or url.endswith("/api/v1/orchestrate/agents"):
-                return FakeResponse('{"native":[{"name":"Healthcare_Care_Coordinator","id":"agent-123"}]}')
+                return FakeResponse('{"native":[{"name":"AI_Healthcare_Coordinator","id":"agent-123"}]}')
 
             if url.endswith("/v1/orchestrate/runs") or url.endswith("/api/v1/orchestrate/runs"):
                 return FakeResponse('{"run":{"run_id":"run-1","task_id":"task-1"}}')
@@ -358,7 +358,7 @@ class OrchestrateDeploymentTests(unittest.TestCase):
             orchestrate_api_endpoint="https://api.dl.watson-orchestrate.ibm.com/instances/example",
             orchestrate_bearer_token="fresh-token",
             orchestrate_auth_type="mcsp",
-            orchestrate_agent_name="Healthcare_Care_Coordinator",
+            orchestrate_agent_name="AI_Healthcare_Coordinator",
         )
 
         class FakeResponse:
@@ -395,7 +395,7 @@ class OrchestrateDeploymentTests(unittest.TestCase):
             orchestrate_api_endpoint="https://api.dl.watson-orchestrate.ibm.com/instances/example",
             orchestrate_bearer_token="fresh-token",
             orchestrate_auth_type="mcsp",
-            orchestrate_agent_name="Healthcare_Care_Coordinator",
+            orchestrate_agent_name="AI_Healthcare_Coordinator",
             orchestrate_agent_id="stale-agent-id",
         )
 
@@ -431,7 +431,7 @@ class OrchestrateDeploymentTests(unittest.TestCase):
                 return FakeResponse("[]")
 
             if url.endswith("/v1/orchestrate/agents") or url.endswith("/api/v1/orchestrate/agents"):
-                return FakeResponse('{"native":[{"name":"Healthcare_Care_Coordinator","id":"fresh-agent-id"}]}')
+                return FakeResponse('{"native":[{"name":"AI_Healthcare_Coordinator","id":"fresh-agent-id"}]}')
 
             raise AssertionError(f"Unexpected request url: {url}")
 
@@ -449,7 +449,7 @@ class OrchestrateDeploymentTests(unittest.TestCase):
             orchestrate_api_endpoint="https://api.dl.watson-orchestrate.ibm.com/instances/example",
             orchestrate_bearer_token="fresh-token",
             orchestrate_auth_type="mcsp",
-            orchestrate_agent_name="Healthcare_Care_Coordinator",
+            orchestrate_agent_name="AI_Healthcare_Coordinator",
             orchestrate_agent_id="agent-123",
         )
 

@@ -70,7 +70,7 @@ class DeploymentPaths:
             repo_root=repo_root,
             tool_file=repo_root / "src" / "healthcare_support_agents" / "orchestrate_adk_tools.py",
             requirements_file=repo_root / "requirements-orchestrate.txt",
-            agent_spec_file=repo_root / "deploy" / "orchestrate" / "healthcare_care_coordinator.agent.yaml",
+            agent_spec_file=repo_root / "deploy" / "orchestrate" / "ai_healthcare_coordinator.agent.yaml",
             package_root=repo_root / "src",
         )
 

@@ -19,7 +19,7 @@ The repo also includes a local deterministic orchestrator and a Streamlit demo U
 - Orchestrate deployment automation:
   - [orchestrate_deployment.py](src/healthcare_support_agents/orchestrate_deployment.py)
 - Agent spec for Orchestrate import:
-  - [healthcare_care_coordinator.agent.yaml](deploy/orchestrate/healthcare_care_coordinator.agent.yaml)
+  - [ai_healthcare_coordinator.agent.yaml](deploy/orchestrate/ai_healthcare_coordinator.agent.yaml)
 - Optional watsonx tool-calling demo path:
   - [watsonx_tool_calling_example.py](watsonx_tool_calling_example.py)
 
@@ -46,12 +46,12 @@ WATSONX_URL=https://us-south.ml.cloud.ibm.com
 WATSONX_MODEL=watsonx/ibm/granite-3-8b-instruct
 SERPER_API_KEY=your_serper_api_key_here
 
-ORCHESTRATE_INSTANCE_URL=https://your-orchestrate-instance-url
-ORCHESTRATE_API_ENDPOINT=https://your-orchestrate-instance-url
+ORCHESTRATE_INSTANCE_URL=
+ORCHESTRATE_API_ENDPOINT=
 ORCHESTRATE_API_KEY=your_orchestrate_api_key_here
 ORCHESTRATE_BEARER_TOKEN=
-ORCHESTRATE_ENV_NAME=healthcare-dev
-ORCHESTRATE_AGENT_NAME=Healthcare_Care_Coordinator
+ORCHESTRATE_ENV_NAME=healthcare-iam
+ORCHESTRATE_AGENT_NAME=AI_Healthcare_Coordinator
 ORCHESTRATE_AGENT_ID=
 ORCHESTRATE_AGENT_ENVIRONMENT_ID=
 ORCHESTRATE_AUTH_TYPE=ibm_iam
@@ -66,7 +66,7 @@ Install ADK CLI, then add/activate your Orchestrate environment:
 
 ```powershell
 pip install --upgrade ibm-watsonx-orchestrate
-orchestrate env add -n healthcare-dev -u https://your-orchestrate-instance-url --type ibm_iam --activate
+orchestrate env add -n healthcare-iam -u https://your-orchestrate-instance-url --type ibm_iam --activate
 ```
 
 ### 2. Register tools in Orchestrate
@@ -85,7 +85,7 @@ $env:PYTHONPATH="src"
 python -m healthcare_support_agents.orchestrate_deployment wire-agent
 ```
 
-This imports [healthcare_care_coordinator.agent.yaml](deploy/orchestrate/healthcare_care_coordinator.agent.yaml), wiring the registered tools to the native Orchestrate agent.
+This imports [ai_healthcare_coordinator.agent.yaml](deploy/orchestrate/ai_healthcare_coordinator.agent.yaml), wiring the registered tools to the native Orchestrate agent.
 
 ### 4A. Invoke through Orchestrate CLI chat
 
@@ -153,7 +153,7 @@ SERPER_API_KEY = "your_serper_api_key_here"
 
 ORCHESTRATE_AUTH_TYPE = "mcsp"
 ORCHESTRATE_API_ENDPOINT = "https://api.dl.watson-orchestrate.ibm.com/instances/<your-instance-id>"
-ORCHESTRATE_AGENT_NAME = "Healthcare_Care_Coordinator"
+ORCHESTRATE_AGENT_NAME = "AI_Healthcare_Coordinator"
 ORCHESTRATE_AGENT_ID = "bb8d1daa-3f30-48b6-a95e-1bc2f299b0b3"
 ORCHESTRATE_AGENT_ENVIRONMENT_ID = "518fe261-3238-42eb-b798-d91c3e14dbc7"
 # Optional if you prefer static token mode:
@@ -177,4 +177,3 @@ python -m unittest tests.test_app tests.test_watsonx_integration tests.test_orch
 - [Chat with Orchestrate assistant API](https://developer.watson-orchestrate.ibm.com/apis/orchestrate-agent/chat-with-orchestrate-assistant)
 - [Run events API](https://developer.watson-orchestrate.ibm.com/apis/orchestrate-agent/get-orchestrate-assistant-run-events)
 
-Adventure$17062012

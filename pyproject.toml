@@ -10,6 +10,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "streamlit>=1.44.0",
+    "Authlib>=1.3.2",
+    "PyYAML>=6.0",
+    "ibm-watsonx-orchestrate",
+    # Optional: IBM Watsonx AI SDK (for live API integration)
+    "ibm-watsonx-ai",
+    # Note: serper is a custom implementation in src/healthcare_support_agents/serper_client.py
 ]
 
 [tool.setuptools.packages.find]

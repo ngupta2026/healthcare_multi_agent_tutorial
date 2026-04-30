@@ -58,8 +58,8 @@ class AppConfig:
     orchestrate_api_endpoint: str | None = None
     orchestrate_api_key: str | None = None
     orchestrate_bearer_token: str | None = None
-    orchestrate_env_name: str = "healthcare-dev"
-    orchestrate_agent_name: str = "Healthcare_Care_Coordinator"
+    orchestrate_env_name: str = "healthcare-iam"
+    orchestrate_agent_name: str = "AI_Healthcare_Coordinator"
     orchestrate_agent_id: str | None = None
     orchestrate_agent_environment_id: str | None = None
     orchestrate_auth_type: str = "ibm_iam"
@@ -81,9 +81,9 @@ class AppConfig:
             orchestrate_api_endpoint=_read_setting("ORCHESTRATE_API_ENDPOINT"),
             orchestrate_api_key=_read_setting("ORCHESTRATE_API_KEY"),
             orchestrate_bearer_token=_read_setting("ORCHESTRATE_BEARER_TOKEN"),
-            orchestrate_env_name=_read_setting("ORCHESTRATE_ENV_NAME", "healthcare-dev") or "healthcare-dev",
-            orchestrate_agent_name=_read_setting("ORCHESTRATE_AGENT_NAME", "Healthcare_Care_Coordinator")
-            or "Healthcare_Care_Coordinator",
+            orchestrate_env_name=_read_setting("ORCHESTRATE_ENV_NAME", "healthcare-iam") or "healthcare-iam",
+            orchestrate_agent_name=_read_setting("ORCHESTRATE_AGENT_NAME", "AI_Healthcare_Coordinator")
+            or "AI_Healthcare_Coordinator",
             orchestrate_agent_id=_read_setting("ORCHESTRATE_AGENT_ID"),
             orchestrate_agent_environment_id=_read_setting("ORCHESTRATE_AGENT_ENVIRONMENT_ID"),
             orchestrate_auth_type=_read_setting("ORCHESTRATE_AUTH_TYPE", "ibm_iam") or "ibm_iam",

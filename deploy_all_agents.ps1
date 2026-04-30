@@ -11,7 +11,7 @@
 # ---------------------------------------------------------------------------
 
 param(
-    [string]$EnvName = "healthcare-iam",
+    [string]$EnvName = "healthcare-ca",
     [switch]$SkipToolImport
 )
 
@@ -36,7 +36,7 @@ $SPECIALIST_AGENTS = @(
 )
 
 # Supervisor coordinator YAML - deployed LAST
-$COORDINATOR_AGENT = "healthcare_care_coordinator.agent.yaml"
+$COORDINATOR_AGENT = "ai_healthcare_coordinator.agent.yaml"
 
 # ---------------------------------------------------------------------------
 # Helper
@@ -290,7 +290,7 @@ foreach ($yaml in $SPECIALIST_AGENTS) {
 # ---------------------------------------------------------------------------
 # Step 6 - Import coordinator (must come last)
 # ---------------------------------------------------------------------------
-Print-Step "Step 6/6 - Import supervisor coordinator (Healthcare_Care_Coordinator)"
+Print-Step "Step 6/6 - Import supervisor coordinator (AI_Healthcare_Coordinator)"
 Write-Host "  This agent lists all 4 specialists as collaborators."
 Write-Host "  IBM Orchestrate resolves collaborators by name - they must exist first."
 Write-Host ""
@@ -313,6 +313,6 @@ Write-Host "    - Patient_Context_Agent" -ForegroundColor Green
 Write-Host "    - Discharge_Translator_Agent" -ForegroundColor Green
 Write-Host "    - Recovery_Monitoring_Agent" -ForegroundColor Green
 Write-Host "    - Care_Logistics_Agent" -ForegroundColor Green
-Write-Host "    - Healthcare_Care_Coordinator (supervisor)" -ForegroundColor Green
+Write-Host "    - AI_Healthcare_Coordinator (supervisor)" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Green
 

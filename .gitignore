@@ -1,8 +1,11 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.venv/
+src/.venv/
+.venv_final/
 *.egg-info/
 .env
 settings.json
+**/site-packages/
 .streamlit/secrets.toml
+agent_operations.log

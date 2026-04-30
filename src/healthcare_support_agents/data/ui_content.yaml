@@ -1,0 +1,51 @@
+sample_prompts:
+  Nurse:
+  - Which patients need nurse escalation today?
+  - Summarize PT-1002's recovery status and flag urgent concerns.
+  - What symptoms is PT-1001 reporting and what action is recommended?
+  - Are there any patients with high-priority health shifts?
+  Physician:
+  - Review the discharge plan for PT-1001 and highlight medication risks.
+  - What vitals are concerning for PT-2002?
+  - Give me a clinical summary of PT-1003's post-op recovery.
+  - Are there any patients with oxygen saturation below 92%?
+  Patient / Caregiver:
+  - What should I do today after my discharge from hospital?
+  - When do I take my medications and what are the doses?
+  - What warning signs should I watch for, and when should I call for help?
+  - How do I use my walker safely?
+  Care Coordinator:
+  - Are all prescriptions filled for PT-2002?
+  - Check appointment and transport status for PT-1001.
+  - Which patients have unresolved logistics barriers?
+  - Find alternative pharmacies near PT-2002 for prescription pickup.
+symptom_reports:
+  PT-1001: A little tired after walking, but no fever and breathing is normal.
+  PT-2002: My leg is more swollen and I missed my antibiotic pickup.
+  PT-1002: I feel short of breath and dizzy this morning.
+  PT-1003: My knee wound looks clean and the pain is manageable, but I feel a little
+    stiff when walking.
+  PT-3004: persistent headache and fever with cough.
+discharge_plan_suggestions:
+  Heart failure follow-up:
+    summary: Discharged after heart failure stabilization with medication adjustment
+      and home monitoring.
+    clinical_note: Take diuretic in the morning. Track daily weight before breakfast.
+      Call care team if weight rises by >2 lb in 24h, breathing worsens, or chest
+      pain occurs.
+    daily_routine: Wake at 7:00 AM, morning meds after breakfast, light walk in afternoon,
+      rest by 9:30 PM.
+  Post-infection recovery:
+    summary: Discharged after infection treatment with oral antibiotic continuation
+      and symptom watch.
+    clinical_note: Take antibiotic as prescribed until complete. Monitor fever, swelling,
+      or spreading redness. Seek same-day review for worsening symptoms.
+    daily_routine: Hydration reminders every 3-4 hours, medications with meals, gentle
+      movement, and evening symptom check.
+  Post-op mobility:
+    summary: Discharged after procedure with pain control plan and mobility safety
+      precautions.
+    clinical_note: Use assistive device for transfers, keep wound clean and dry, and
+      report severe pain, drainage, fever, or dizziness immediately.
+    daily_routine: Morning wound check, timed pain medications, short supervised walks,
+      and early bedtime for recovery.

@@ -4,9 +4,15 @@ import os
 import re
 import time
 from dataclasses import asdict, replace
+from pathlib import Path
 from typing import Any
 
 import streamlit as st
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover - dependency managed via requirements
+    yaml = None
 
 try:
     from .config import AppConfig
@@ -14,7 +20,7 @@ try:
     from .orchestrator import Orchestrator
     from .repository import DataRepository
     from .serper_client import SerperSearchClient
-    from .tool_wrappers import HealthcareToolRuntime, build_repository
+    from .tool_wrappers import HealthcareToolRuntime, build_repository, tool_message
     from .watsonx_client import WatsonxClient
     from .watsonx_orchestrator import WatsonxCareOrchestrator
 except ImportError:
@@ -23,7 +29,7 @@ except ImportError:
     from healthcare_support_agents.orchestrator import Orchestrator
     from healthcare_support_agents.repository import DataRepository
     from healthcare_support_agents.serper_client import SerperSearchClient
-    from healthcare_support_agents.tool_wrappers import HealthcareToolRuntime, build_repository
+    from healthcare_support_agents.tool_wrappers import HealthcareToolRuntime, build_repository, tool_message
     from healthcare_support_agents.watsonx_client import WatsonxClient
     from healthcare_support_agents.watsonx_orchestrator import WatsonxCareOrchestrator
 
@@ -85,6 +91,853 @@ def clean_orchestrate_summary(text: str) -> str:
     if not summary:
         summary = "\n".join(lines[:6]).strip()
     return summary
+
+
+def _default_ui_content_payload() -> dict[str, Any]:
+    return {
+        "sample_prompts": {
+            "Nurse": [
+                "Which patients need nurse escalation today?",
+                "Summarize PT-1002's recovery status and flag urgent concerns.",
+                "What symptoms is PT-1001 reporting and what action is recommended?",
+                "Are there any patients with high-priority health shifts?",
+            ],
+            "Physician": [
+                "Review the discharge plan for PT-1001 and highlight medication risks.",
+                "What vitals are concerning for PT-2002?",
+                "Give me a clinical summary of PT-1003's post-op recovery.",
+                "Are there any patients with oxygen saturation below 92%?",
+            ],
+            "Patient / Caregiver": [
+                "What should I do today after my discharge from hospital?",
+                "When do I take my medications and what are the doses?",
+                "What warning signs should I watch for, and when should I call for help?",
+                "How do I use my walker safely?",
+            ],
+            "Care Coordinator": [
+                "Are all prescriptions filled for PT-2002?",
+                "Check appointment and transport status for PT-1001.",
+                "Which patients have unresolved logistics barriers?",
+                "Find alternative pharmacies near PT-2002 for prescription pickup.",
+            ],
+        },
+        "symptom_reports": {
+            "PT-1001": "A little tired after walking, but no fever and breathing is normal.",
+            "PT-2002": "My leg is more swollen and I missed my antibiotic pickup.",
+            "PT-1002": "I feel short of breath and dizzy this morning.",
+            "PT-1003": "My knee wound looks clean and the pain is manageable, but I feel a little stiff when walking.",
+        },
+        "discharge_plan_suggestions": {
+            "Heart failure follow-up": {
+                "summary": "Discharged after heart failure stabilization with medication adjustment and home monitoring.",
+                "clinical_note": "Take diuretic in the morning. Track daily weight before breakfast. Call care team if weight rises by >2 lb in 24h, breathing worsens, or chest pain occurs.",
+                "daily_routine": "Wake at 7:00 AM, morning meds after breakfast, light walk in afternoon, rest by 9:30 PM.",
+            },
+            "Post-infection recovery": {
+                "summary": "Discharged after infection treatment with oral antibiotic continuation and symptom watch.",
+                "clinical_note": "Take antibiotic as prescribed until complete. Monitor fever, swelling, or spreading redness. Seek same-day review for worsening symptoms.",
+                "daily_routine": "Hydration reminders every 3-4 hours, medications with meals, gentle movement, and evening symptom check.",
+            },
+            "Post-op mobility": {
+                "summary": "Discharged after procedure with pain control plan and mobility safety precautions.",
+                "clinical_note": "Use assistive device for transfers, keep wound clean and dry, and report severe pain, drainage, fever, or dizziness immediately.",
+                "daily_routine": "Morning wound check, timed pain medications, short supervised walks, and early bedtime for recovery.",
+            },
+        },
+    }
+
+
+_INITIAL_UI_CONTENT = _default_ui_content_payload()
+SAMPLE_PROMPTS: dict[str, list[str]] = {
+    role: list(prompts) for role, prompts in _INITIAL_UI_CONTENT["sample_prompts"].items()
+}
+_DEFAULT_SYMPTOM_REPORTS: dict[str, str] = dict(_INITIAL_UI_CONTENT["symptom_reports"])
+_DISCHARGE_PLAN_SUGGESTIONS: dict[str, dict[str, str]] = {
+    name: dict(content) for name, content in _INITIAL_UI_CONTENT["discharge_plan_suggestions"].items()
+}
+
+
+_SESSION_ADDED_PATIENTS_KEY = "added_patients_records"
+_ADDED_PATIENTS_YAML = "added_patients.yaml"
+_UI_CONTENT_YAML = "ui_content.yaml"
+_SHOW_MANAGE_PATIENTS_DIALOG_KEY = "show_manage_patients_dialog"
+_MANAGE_PATIENT_EDIT_ID_KEY = "manage_patient_edit_id"
+
+
+def _apply_ui_content_payload(payload: dict[str, Any] | None = None) -> None:
+    global SAMPLE_PROMPTS, _DEFAULT_SYMPTOM_REPORTS, _DISCHARGE_PLAN_SUGGESTIONS
+
+    defaults = _default_ui_content_payload()
+    source = payload if isinstance(payload, dict) else {}
+
+    raw_prompts = source.get("sample_prompts", defaults["sample_prompts"])
+    sample_prompts: dict[str, list[str]] = {}
+    if isinstance(raw_prompts, dict):
+        for role, prompts in raw_prompts.items():
+            if isinstance(prompts, list):
+                cleaned_prompts = [str(prompt) for prompt in prompts if str(prompt).strip()]
+                if cleaned_prompts:
+                    sample_prompts[str(role)] = cleaned_prompts
+    if not sample_prompts:
+        sample_prompts = {
+            role: list(prompts) for role, prompts in defaults["sample_prompts"].items()
+        }
+
+    raw_symptoms = source.get("symptom_reports", defaults["symptom_reports"])
+    symptom_reports = dict(defaults["symptom_reports"])
+    if isinstance(raw_symptoms, dict):
+        symptom_reports.update({
+            str(patient_id): str(report)
+            for patient_id, report in raw_symptoms.items()
+            if str(patient_id).strip()
+        })
+
+    raw_suggestions = source.get("discharge_plan_suggestions", defaults["discharge_plan_suggestions"])
+    discharge_plan_suggestions: dict[str, dict[str, str]] = {}
+    if isinstance(raw_suggestions, dict):
+        for suggestion_name, suggestion_values in raw_suggestions.items():
+            if not isinstance(suggestion_values, dict):
+                continue
+            discharge_plan_suggestions[str(suggestion_name)] = {
+                "summary": str(suggestion_values.get("summary", "")),
+                "clinical_note": str(suggestion_values.get("clinical_note", "")),
+                "daily_routine": str(suggestion_values.get("daily_routine", "")),
+            }
+    if not discharge_plan_suggestions:
+        discharge_plan_suggestions = {
+            name: dict(content) for name, content in defaults["discharge_plan_suggestions"].items()
+        }
+
+    SAMPLE_PROMPTS = sample_prompts
+    _DEFAULT_SYMPTOM_REPORTS = symptom_reports
+    _DISCHARGE_PLAN_SUGGESTIONS = discharge_plan_suggestions
+
+
+def _build_ui_content_payload() -> dict[str, Any]:
+    return {
+        "sample_prompts": SAMPLE_PROMPTS,
+        "symptom_reports": _DEFAULT_SYMPTOM_REPORTS,
+        "discharge_plan_suggestions": _DISCHARGE_PLAN_SUGGESTIONS,
+    }
+
+
+def _load_ui_content_from_yaml(repository: "DataRepository") -> None:
+    _apply_ui_content_payload()
+    if yaml is None:
+        return
+    yaml_path = Path(repository.data_dir) / _UI_CONTENT_YAML
+    if not yaml_path.exists():
+        _persist_ui_content_to_yaml(repository)
+        return
+    try:
+        with yaml_path.open("r", encoding="utf-8") as handle:
+            payload = yaml.safe_load(handle) or {}
+    except Exception:
+        return
+    if isinstance(payload, dict):
+        _apply_ui_content_payload(payload)
+
+
+def _persist_ui_content_to_yaml(repository: "DataRepository") -> None:
+    if yaml is None:
+        raise RuntimeError("PyYAML is not installed. Please install pyyaml to persist UI content.")
+    yaml_path = Path(repository.data_dir) / _UI_CONTENT_YAML
+    yaml_path.parent.mkdir(parents=True, exist_ok=True)
+    with yaml_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(_build_ui_content_payload(), handle, sort_keys=False, allow_unicode=True)
+
+
+def _persist_patient_state(repository: "DataRepository") -> None:
+    _persist_added_patients_to_yaml(repository)
+    _persist_ui_content_to_yaml(repository)
+
+
+def _empty_added_patient_payload() -> dict[str, dict[str, dict[str, Any]]]:
+    return {
+        "patients": {},
+        "discharge_plans": {},
+        "vitals": {},
+        "pharmacy_status": {},
+        "appointments": {},
+        "symptom_reports": {},
+        "deleted_patients": [],
+    }
+
+
+def _get_added_patient_store() -> dict[str, dict[str, dict[str, Any]]]:
+    if _SESSION_ADDED_PATIENTS_KEY not in st.session_state:
+        st.session_state[_SESSION_ADDED_PATIENTS_KEY] = _empty_added_patient_payload()
+    return st.session_state[_SESSION_ADDED_PATIENTS_KEY]
+
+
+def _merge_added_patient_payload(payload: dict[str, Any]) -> None:
+    store = _get_added_patient_store()
+    for section in ("patients", "discharge_plans", "vitals", "pharmacy_status", "appointments", "symptom_reports"):
+        section_data = payload.get(section, {}) if isinstance(payload, dict) else {}
+        if isinstance(section_data, dict):
+            store[section].update(section_data)
+    deleted_patients = payload.get("deleted_patients", []) if isinstance(payload, dict) else []
+    if isinstance(deleted_patients, list):
+        merged_deleted = [str(pid) for pid in store.get("deleted_patients", [])]
+        for pid in deleted_patients:
+            pid_str = str(pid)
+            if pid_str not in merged_deleted:
+                merged_deleted.append(pid_str)
+        store["deleted_patients"] = merged_deleted
+
+
+def _load_added_patients_from_yaml(repository: "DataRepository") -> None:
+    if yaml is None:
+        return
+    yaml_path = Path(repository.data_dir) / _ADDED_PATIENTS_YAML
+    if not yaml_path.exists():
+        return
+    try:
+        with yaml_path.open("r", encoding="utf-8") as handle:
+            payload = yaml.safe_load(handle) or {}
+    except Exception:
+        return
+    if isinstance(payload, dict):
+        _merge_added_patient_payload(payload)
+
+
+def _persist_added_patients_to_yaml(repository: "DataRepository") -> None:
+    if yaml is None:
+        raise RuntimeError("PyYAML is not installed. Please install pyyaml to persist added patients.")
+    yaml_path = Path(repository.data_dir) / _ADDED_PATIENTS_YAML
+    yaml_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = _get_added_patient_store()
+    with yaml_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(payload, handle, sort_keys=False)
+
+
+def _apply_added_patient_store(repository: "DataRepository") -> None:
+    store = _get_added_patient_store()
+    deleted_patients = {str(pid) for pid in store.get("deleted_patients", [])}
+    for patient_id in deleted_patients:
+        repository.patients.pop(patient_id, None)
+        repository.discharge_plans.pop(patient_id, None)
+        repository.vitals.pop(patient_id, None)
+        repository.pharmacy_status.pop(patient_id, None)
+        repository.appointments.pop(patient_id, None)
+        _DEFAULT_SYMPTOM_REPORTS.pop(patient_id, None)
+    repository.patients.update(store["patients"])
+    repository.discharge_plans.update(store["discharge_plans"])
+    repository.vitals.update(store["vitals"])
+    repository.pharmacy_status.update(store["pharmacy_status"])
+    repository.appointments.update(store["appointments"])
+    for pid, symptom in store["symptom_reports"].items():
+        _DEFAULT_SYMPTOM_REPORTS[str(pid)] = str(symptom)
+
+
+def _save_new_patient_record(
+    patient_id: str,
+    patient_record: dict[str, Any],
+    discharge_record: dict[str, Any],
+    vitals_record: dict[str, Any],
+    pharmacy_record: dict[str, Any],
+    appointment_record: dict[str, Any],
+    symptom_report: str,
+) -> None:
+    store = _get_added_patient_store()
+    store["deleted_patients"] = [pid for pid in store.get("deleted_patients", []) if pid != patient_id]
+    store["patients"][patient_id] = patient_record
+    store["discharge_plans"][patient_id] = discharge_record
+    store["vitals"][patient_id] = vitals_record
+    store["pharmacy_status"][patient_id] = pharmacy_record
+    store["appointments"][patient_id] = appointment_record
+    store["symptom_reports"][patient_id] = symptom_report
+    _DEFAULT_SYMPTOM_REPORTS[patient_id] = symptom_report
+
+
+def _delete_patient_record(patient_id: str) -> None:
+    store = _get_added_patient_store()
+    for section in ("patients", "discharge_plans", "vitals", "pharmacy_status", "appointments", "symptom_reports"):
+        store[section].pop(patient_id, None)
+    deleted_patients = store.setdefault("deleted_patients", [])
+    if patient_id not in deleted_patients:
+        deleted_patients.append(patient_id)
+    _DEFAULT_SYMPTOM_REPORTS.pop(patient_id, None)
+
+
+def _patient_form_defaults(repository: "DataRepository", patient_id: str | None = None) -> dict[str, Any]:
+    if patient_id is None:
+        return {
+            "patient_id": "",
+            "patient_name": "",
+            "literacy_level": "plain_language",
+            "care_plan_id": "",
+            "discharge_plan_id": "",
+            "pharmacy_plan_id": "",
+            "appointment_plan_id": "",
+            "discharge_summary": "",
+            "clinical_note": "",
+            "daily_routine": "",
+            "heart_rate": 90,
+            "oxygen_saturation": 96,
+            "temperature_f": 98.6,
+            "systolic_bp": 120,
+            "weight_delta_lb": 0.0,
+            "medication_name": "",
+            "medication_status": "ready_for_pickup",
+            "delay_reason": "",
+            "alternate_source": "",
+            "specialty": "",
+            "scheduled_at": "",
+            "transportation_status": "confirmed",
+            "transportation_note": "",
+            "symptom_report": "No specific symptoms reported today.",
+            "suggestion_name": next(iter(_DISCHARGE_PLAN_SUGGESTIONS)),
+        }
+
+    patient = repository.patients[patient_id]
+    discharge_plan = repository.discharge_plans.get(patient_id, {})
+    vitals = repository.vitals.get(patient_id, {})
+    pharmacy = repository.pharmacy_status.get(patient_id, {})
+    medications = pharmacy.get("medications", []) if isinstance(pharmacy, dict) else []
+    medication = medications[0] if medications else {}
+    appointments = repository.appointments.get(patient_id, {}).get("appointments", [])
+    appointment = appointments[0] if appointments else {}
+    return {
+        "patient_id": patient_id,
+        "patient_name": patient.get("name", ""),
+        "literacy_level": patient.get("literacy_level", "plain_language"),
+        "care_plan_id": patient.get("care_plan_id", ""),
+        "discharge_plan_id": patient.get("discharge_plan_id", ""),
+        "pharmacy_plan_id": patient.get("pharmacy_plan_id", ""),
+        "appointment_plan_id": patient.get("appointment_plan_id", ""),
+        "discharge_summary": discharge_plan.get("summary", ""),
+        "clinical_note": discharge_plan.get("clinical_note", ""),
+        "daily_routine": discharge_plan.get("daily_routine", ""),
+        "heart_rate": int(vitals.get("heart_rate", 90)),
+        "oxygen_saturation": int(vitals.get("oxygen_saturation", 96)),
+        "temperature_f": float(vitals.get("temperature_f", 98.6)),
+        "systolic_bp": int(vitals.get("systolic_bp", 120)),
+        "weight_delta_lb": float(vitals.get("weight_delta_lb", 0.0)),
+        "medication_name": medication.get("name", ""),
+        "medication_status": medication.get("status", "ready_for_pickup"),
+        "delay_reason": medication.get("delay_reason", ""),
+        "alternate_source": medication.get("alternate_source", ""),
+        "specialty": appointment.get("specialty", ""),
+        "scheduled_at": appointment.get("scheduled_at", ""),
+        "transportation_status": appointment.get("transportation_status", "confirmed"),
+        "transportation_note": appointment.get("transportation_note", ""),
+        "symptom_report": _DEFAULT_SYMPTOM_REPORTS.get(patient_id, "No specific symptoms reported today."),
+        "suggestion_name": next(iter(_DISCHARGE_PLAN_SUGGESTIONS)),
+    }
+
+
+def _render_patient_form(
+    repository: "DataRepository",
+    *,
+    mode: str,
+    patient_id: str | None = None,
+) -> None:
+    defaults = _patient_form_defaults(repository, patient_id)
+    key_prefix = f"{mode}_{patient_id or 'new'}"
+    literacy_options = ["plain_language", "clinical_language"]
+    medication_status_options = ["ready_for_pickup", "delayed"]
+    transportation_options = ["confirmed", "needs_booking", "not_required"]
+    suggestion_options = list(_DISCHARGE_PLAN_SUGGESTIONS.keys())
+    suggestion_name_default = defaults.get("suggestion_name", suggestion_options[0])
+    suggestion_index = suggestion_options.index(suggestion_name_default) if suggestion_name_default in suggestion_options else 0
+
+    with st.form(f"{key_prefix}_patient_form"):
+        st.markdown("### Patient Profile")
+        pcol1, pcol2 = st.columns(2)
+        with pcol1:
+            patient_id_value = st.text_input(
+                "Patient ID",
+                value=defaults["patient_id"],
+                placeholder="PT-3003",
+                disabled=mode == "edit",
+                key=f"{key_prefix}_patient_id",
+            ).strip().upper()
+            literacy_level = st.selectbox(
+                "Literacy Level",
+                options=literacy_options,
+                index=literacy_options.index(defaults["literacy_level"]),
+                key=f"{key_prefix}_literacy_level",
+            )
+        with pcol2:
+            patient_name = st.text_input(
+                "Patient Name",
+                value=defaults["patient_name"],
+                placeholder="Jane Doe",
+                key=f"{key_prefix}_patient_name",
+            ).strip()
+            care_plan_id = st.text_input(
+                "Care Plan ID",
+                value=defaults["care_plan_id"],
+                placeholder="CP-3003",
+                key=f"{key_prefix}_care_plan_id",
+            ).strip().upper()
+
+        st.markdown("### Plan IDs")
+        idcol1, idcol2 = st.columns(2)
+        with idcol1:
+            discharge_plan_id = st.text_input(
+                "Discharge Plan ID",
+                value=defaults["discharge_plan_id"],
+                placeholder="DP-3003",
+                key=f"{key_prefix}_discharge_plan_id",
+            ).strip().upper()
+            appointment_plan_id = st.text_input(
+                "Appointment Plan ID",
+                value=defaults["appointment_plan_id"],
+                placeholder="AP-3003",
+                key=f"{key_prefix}_appointment_plan_id",
+            ).strip().upper()
+        with idcol2:
+            pharmacy_plan_id = st.text_input(
+                "Pharmacy Plan ID",
+                value=defaults["pharmacy_plan_id"],
+                placeholder="RX-3003",
+                key=f"{key_prefix}_pharmacy_plan_id",
+            ).strip().upper()
+
+        st.markdown("### Discharge Plan")
+        suggestion_name = st.selectbox(
+            "Discharge Plan Suggestion",
+            options=suggestion_options,
+            index=suggestion_index,
+            help="Pick a template to guide the discharge summary, clinical note, and daily routine.",
+            key=f"{key_prefix}_suggestion_name",
+        )
+        selected_suggestion = _DISCHARGE_PLAN_SUGGESTIONS[suggestion_name]
+        with st.expander("Preview suggestion", expanded=False):
+            st.markdown(f"Summary suggestion: {selected_suggestion['summary']}")
+            st.markdown(f"Clinical note suggestion: {selected_suggestion['clinical_note']}")
+            st.markdown(f"Daily routine suggestion: {selected_suggestion['daily_routine']}")
+        dcol1, dcol2 = st.columns(2)
+        with dcol1:
+            discharge_summary = st.text_area(
+                "Discharge Summary",
+                value=defaults["discharge_summary"],
+                height=70,
+                placeholder=selected_suggestion["summary"],
+                key=f"{key_prefix}_discharge_summary",
+            )
+            daily_routine = st.text_area(
+                "Daily Routine",
+                value=defaults["daily_routine"],
+                height=70,
+                placeholder=selected_suggestion["daily_routine"],
+                key=f"{key_prefix}_daily_routine",
+            )
+        with dcol2:
+            clinical_note = st.text_area(
+                "Clinical Note",
+                value=defaults["clinical_note"],
+                height=100,
+                placeholder=selected_suggestion["clinical_note"],
+                key=f"{key_prefix}_clinical_note",
+            )
+
+        st.markdown("### Vitals")
+        vcol1, vcol2 = st.columns(2)
+        with vcol1:
+            heart_rate = st.number_input(
+                "Heart Rate",
+                min_value=20,
+                max_value=250,
+                value=defaults["heart_rate"],
+                step=1,
+                key=f"{key_prefix}_heart_rate",
+            )
+            oxygen_saturation = st.number_input(
+                "Oxygen Saturation",
+                min_value=50,
+                max_value=100,
+                value=defaults["oxygen_saturation"],
+                step=1,
+                key=f"{key_prefix}_oxygen_saturation",
+            )
+            temperature_f = st.number_input(
+                "Temperature (F)",
+                min_value=90.0,
+                max_value=110.0,
+                value=defaults["temperature_f"],
+                step=0.1,
+                key=f"{key_prefix}_temperature_f",
+            )
+        with vcol2:
+            systolic_bp = st.number_input(
+                "Systolic BP",
+                min_value=70,
+                max_value=260,
+                value=defaults["systolic_bp"],
+                step=1,
+                key=f"{key_prefix}_systolic_bp",
+            )
+            weight_delta_lb = st.number_input(
+                "Weight Delta (lb)",
+                min_value=-20.0,
+                max_value=20.0,
+                value=defaults["weight_delta_lb"],
+                step=0.1,
+                key=f"{key_prefix}_weight_delta_lb",
+            )
+
+        st.markdown("### Pharmacy")
+        phcol1, phcol2 = st.columns(2)
+        with phcol1:
+            medication_name = st.text_input(
+                "Medication Name",
+                value=defaults["medication_name"],
+                placeholder="cephalexin 500 mg",
+                key=f"{key_prefix}_medication_name",
+            ).strip()
+            medication_status = st.selectbox(
+                "Medication Status",
+                options=medication_status_options,
+                index=medication_status_options.index(defaults["medication_status"]),
+                key=f"{key_prefix}_medication_status",
+            )
+        with phcol2:
+            delay_reason = st.text_area(
+                "Delay Reason",
+                value=defaults["delay_reason"],
+                height=68,
+                key=f"{key_prefix}_delay_reason",
+            )
+            alternate_source = st.text_area(
+                "Alternate Source",
+                value=defaults["alternate_source"],
+                height=68,
+                key=f"{key_prefix}_alternate_source",
+            )
+
+        st.markdown("### Appointment")
+        acol1, acol2 = st.columns(2)
+        with acol1:
+            specialty = st.text_input(
+                "Specialty",
+                value=defaults["specialty"],
+                placeholder="Cardiology",
+                key=f"{key_prefix}_specialty",
+            ).strip()
+            scheduled_at = st.text_input(
+                "Scheduled At (ISO)",
+                value=defaults["scheduled_at"],
+                placeholder="2026-04-20T10:30:00",
+                key=f"{key_prefix}_scheduled_at",
+            ).strip()
+        with acol2:
+            transportation_status = st.selectbox(
+                "Transportation Status",
+                options=transportation_options,
+                index=transportation_options.index(defaults["transportation_status"]),
+                key=f"{key_prefix}_transportation_status",
+            )
+            transportation_note = st.text_area(
+                "Transportation Note",
+                value=defaults["transportation_note"],
+                height=68,
+                key=f"{key_prefix}_transportation_note",
+            )
+
+        st.markdown("### Symptom Report")
+        symptom_report = st.text_area(
+            "Default Symptom Report",
+            value=defaults["symptom_report"],
+            height=68,
+            help="Used as default symptom context in chat and workflow helper prompts.",
+            key=f"{key_prefix}_symptom_report",
+        )
+
+        submitted = st.form_submit_button(
+            "Save Patient" if mode == "add" else "Update Patient",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if not submitted:
+        return
+
+    resolved_patient_id = defaults["patient_id"] if mode == "edit" else patient_id_value
+
+    missing = [
+        field
+        for field, value in {
+            "Patient ID": resolved_patient_id,
+            "Patient Name": patient_name,
+            "Care Plan ID": care_plan_id,
+            "Discharge Plan ID": discharge_plan_id,
+            "Pharmacy Plan ID": pharmacy_plan_id,
+            "Appointment Plan ID": appointment_plan_id,
+            "Discharge Summary": discharge_summary,
+            "Clinical Note": clinical_note,
+            "Daily Routine": daily_routine,
+            "Medication Name": medication_name,
+            "Specialty": specialty,
+            "Scheduled At": scheduled_at,
+        }.items()
+        if not str(value).strip()
+    ]
+    if missing:
+        st.error(f"Please fill required fields: {', '.join(missing)}")
+        return
+
+    if mode == "add" and resolved_patient_id in repository.patients:
+        st.error(f"Patient ID {resolved_patient_id} already exists.")
+        return
+
+    patient_record = {
+        "patient_id": resolved_patient_id,
+        "name": patient_name,
+        "literacy_level": literacy_level,
+        "discharge_plan_id": discharge_plan_id,
+        "care_plan_id": care_plan_id,
+        "pharmacy_plan_id": pharmacy_plan_id,
+        "appointment_plan_id": appointment_plan_id,
+    }
+    discharge_record = {
+        "discharge_plan_id": discharge_plan_id,
+        "patient_id": resolved_patient_id,
+        "summary": discharge_summary,
+        "clinical_note": clinical_note,
+        "daily_routine": daily_routine,
+    }
+    vitals_record = {
+        "patient_id": resolved_patient_id,
+        "heart_rate": int(heart_rate),
+        "oxygen_saturation": int(oxygen_saturation),
+        "temperature_f": float(temperature_f),
+        "systolic_bp": int(systolic_bp),
+        "weight_delta_lb": float(weight_delta_lb),
+    }
+    pharmacy_record = {
+        "pharmacy_plan_id": pharmacy_plan_id,
+        "patient_id": resolved_patient_id,
+        "medications": [
+            {
+                "name": medication_name,
+                "status": medication_status,
+                "delay_reason": delay_reason,
+                "alternate_source": alternate_source,
+            }
+        ],
+    }
+    appointment_record = {
+        "appointment_plan_id": appointment_plan_id,
+        "patient_id": resolved_patient_id,
+        "appointments": [
+            {
+                "specialty": specialty,
+                "scheduled_at": scheduled_at,
+                "transportation_status": transportation_status,
+                "transportation_note": transportation_note,
+            }
+        ],
+    }
+
+    _save_new_patient_record(
+        resolved_patient_id,
+        patient_record,
+        discharge_record,
+        vitals_record,
+        pharmacy_record,
+        appointment_record,
+        symptom_report.strip() or "No specific symptoms reported today.",
+    )
+    try:
+        _persist_patient_state(repository)
+    except Exception as exc:
+        st.warning(f"Patient saved in current session, but YAML persistence failed: {exc}")
+    if mode == "edit":
+        st.session_state.pop(_MANAGE_PATIENT_EDIT_ID_KEY, None)
+        st.session_state[_SHOW_MANAGE_PATIENTS_DIALOG_KEY] = False
+    st.success(
+        f"{'Added' if mode == 'add' else 'Updated'} patient {resolved_patient_id} - {patient_name}"
+    )
+    st.rerun()
+
+
+def _render_add_patient_form(repository: "DataRepository") -> None:
+    _render_patient_form(repository, mode="add")
+
+
+def _open_add_patient_dialog(repository: "DataRepository") -> None:
+    @st.dialog("Add New Patient")
+    def _dialog() -> None:
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stDialog"] div[role="dialog"] {
+                width: min(1240px, 95vw) !important;
+                max-width: min(1240px, 95vw) !important;
+            }
+            div[data-testid="stDialog"] div[role="dialog"] [data-testid="stForm"] {
+                max-height: 78vh;
+                overflow-y: auto;
+                padding-right: 0.4rem;
+            }
+            div[data-testid="stDialog"] div[role="dialog"] [data-testid="stVerticalBlock"] {
+                gap: 0.45rem;
+            }
+            div[data-testid="stDialog"] div[role="dialog"] h3 {
+                margin-top: 0.25rem;
+                margin-bottom: 0.15rem;
+                font-size: 1rem;
+            }
+            div[data-testid="stDialog"] div[role="dialog"] [data-testid="stFormSubmitButton"] {
+                position: sticky;
+                bottom: 0;
+                z-index: 3;
+                padding-top: 0.35rem;
+                background: linear-gradient(to top, #ffffff 72%, rgba(255, 255, 255, 0));
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        _render_add_patient_form(repository)
+
+    _dialog()
+def _open_manage_patients_dialog(repository: "DataRepository") -> None:
+    @st.dialog("Edit/Delete Patient")
+    def _dialog() -> None:
+        editing_patient_id = st.session_state.get(_MANAGE_PATIENT_EDIT_ID_KEY)
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stDialog"] div[role="dialog"] {
+                width: min(1240px, 95vw) !important;
+                max-width: min(1240px, 95vw) !important;
+            }
+            div[data-testid="stDialog"] div[role="dialog"] [data-testid="stForm"] {
+                max-height: 78vh;
+                overflow-y: auto;
+                padding-right: 0.4rem;
+            }
+            div[data-testid="stDialog"] div[role="dialog"] [data-testid="stVerticalBlock"] {
+                gap: 0.45rem;
+            }
+            div[data-testid="stDialog"] div[role="dialog"] h3 {
+                margin-top: 0.25rem;
+                margin-bottom: 0.15rem;
+                font-size: 1rem;
+            }
+            div[data-testid="stDialog"] div[role="dialog"] [data-testid="stFormSubmitButton"] {
+                position: sticky;
+                bottom: 0;
+                z-index: 3;
+                padding-top: 0.35rem;
+                background: linear-gradient(to top, #ffffff 72%, rgba(255, 255, 255, 0));
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if editing_patient_id:
+            top_col, _ = st.columns([1, 4])
+            with top_col:
+                if st.button("Back", key="manage_patients_back", use_container_width=True):
+                    st.session_state.pop(_MANAGE_PATIENT_EDIT_ID_KEY, None)
+                    st.session_state[_SHOW_MANAGE_PATIENTS_DIALOG_KEY] = True
+                    st.rerun()
+            _render_patient_form(repository, mode="edit", patient_id=editing_patient_id)
+            return
+
+        st.caption("Manage patient records across the case setup list.")
+
+        if not repository.patients:
+            st.info("No patients available.")
+            return
+
+        for pid, record in sorted(repository.patients.items()):
+            info_col, edit_col, delete_col = st.columns([4, 1, 1])
+            with info_col:
+                st.markdown(f"**{pid}**  \\n+{record['name']}")
+            with edit_col:
+                if st.button("Edit", key=f"edit_patient_{pid}", use_container_width=True):
+                    st.session_state[_MANAGE_PATIENT_EDIT_ID_KEY] = pid
+                    st.session_state[_SHOW_MANAGE_PATIENTS_DIALOG_KEY] = True
+                    st.rerun()
+            with delete_col:
+                if st.button("Delete", key=f"delete_patient_{pid}", use_container_width=True):
+                    _delete_patient_record(pid)
+                    try:
+                        _persist_patient_state(repository)
+                    except Exception as exc:
+                        st.warning(f"Patient deleted in current session, but YAML persistence failed: {exc}")
+                    st.session_state[_SHOW_MANAGE_PATIENTS_DIALOG_KEY] = True
+                    st.success(f"Deleted patient {pid}")
+                    st.rerun()
+
+    _dialog()
+
+
+def _detect_relevant_patients(prompt: str, all_patient_ids: list[str]) -> list[str]:
+    """Return patient IDs explicitly mentioned in the prompt, or all if it's a broad question."""
+    mentioned = [pid for pid in all_patient_ids if pid.upper() in prompt.upper()]
+    return mentioned if mentioned else list(all_patient_ids)
+
+
+def _build_rag_knowledge(
+    prompt: str,
+    orchestrator: "Orchestrator",
+    repository: "DataRepository",
+) -> str:
+    """Run the deterministic agentic pipeline for relevant patients and return a structured knowledge block."""
+    patient_ids = _detect_relevant_patients(prompt, list(repository.patients.keys()))
+    sections: list[str] = []
+    for pid in patient_ids:
+        symptom = _DEFAULT_SYMPTOM_REPORTS.get(pid, "No specific symptoms reported today.")
+        try:
+            result = orchestrator.resolve(pid, symptom)
+        except Exception as exc:
+            sections.append(f"=== PATIENT {pid} ===\nError retrieving data: {exc}\n")
+            continue
+        patient = repository.patients[pid]
+        vitals = repository.vitals.get(pid, {})
+        escalation = "YES — escalate to nurse immediately" if result.escalated else "No"
+        checklist_preview = "; ".join(result.checklist[:4]) if result.checklist else "None"
+        coordination_preview = "; ".join(result.coordination_status[:3]) if result.coordination_status else "None"
+        reasoning_preview = "; ".join(result.reasoning_log) if result.reasoning_log else "None"
+        sections.append(
+            f"=== PATIENT {pid}: {patient['name']} ===\n"
+            f"Risk Status: {result.risk_status}\n"
+            f"Escalation Required: {escalation}\n"
+            f"Recovery Summary: {result.recovery_summary}\n"
+            f"Latest Symptom Report: {symptom}\n"
+            f"Checklist (top items): {checklist_preview}\n"
+            f"Coordination Status: {coordination_preview}\n"
+            f"Agent Reasoning: {reasoning_preview}\n"
+            f"Vitals — O2: {vitals.get('oxygen_saturation')}%, "
+            f"Temp: {vitals.get('temperature_f')}°F, "
+            f"HR: {vitals.get('heart_rate')} bpm, "
+            f"Weight delta: {vitals.get('weight_delta_lb')} lb\n"
+        )
+    n = len(patient_ids)
+    header = (
+        f"REAL-TIME CARE KNOWLEDGE BASE — {n} patient(s) retrieved by agentic pipeline\n"
+        "This data was generated fresh by running the multi-agent orchestration pipeline.\n"
+        "Use ONLY this data to answer the user. Do not guess or fabricate.\n\n"
+    )
+    return header + "\n".join(sections)
+
+
+def _build_watsonx_chat_system_prompt(repository: "DataRepository") -> str:
+    patient_lines = "\n".join(
+        f"  - {pid}: {record['name']} (condition: {record.get('primary_condition', 'unknown')})"
+        for pid, record in repository.patients.items()
+    )
+    return (
+        "You are an AI Healthcare Multi-Agent Coordinator with access to real patient data.\n\n"
+        "AVAILABLE PATIENTS IN THIS SYSTEM:\n"
+        f"{patient_lines}\n\n"
+        "IMPORTANT RULES:\n"
+        "1. When asked broad questions (e.g. 'which patients need escalation?', 'check all patients'), "
+        "call the relevant tool for EVERY patient in the list above — do not ask the user which patients to check.\n"
+        "2. Use get_patient_snapshot, monitor_recovery_status, coordinate_care_logistics, and "
+        "translate_discharge_plan tools to retrieve real data. Never guess or make up values.\n"
+        "3. For escalation questions, call monitor_recovery_status for each patient using their "
+        "latest symptom context, then summarise who needs escalation and why.\n"
+        "4. Answer concisely. Always prioritise patient safety and flag escalation needs clearly."
+    )
 
 
 def extract_text(content: Any) -> str:
@@ -192,6 +1045,177 @@ def parse_orchestrate_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _run_watsonx_chat(
+    watsonx_orchestrator: "WatsonxCareOrchestrator",
+    chat_history: list[dict[str, Any]],
+    repository: "DataRepository",
+    orchestrator: "Orchestrator",
+) -> str:
+    """RAG chat: retrieve fresh care summaries via agentic pipeline, inject as knowledge, call LLM once."""
+    client = watsonx_orchestrator.client
+
+    # Retrieve the current user prompt (last message)
+    user_prompt = chat_history[-1]["content"] if chat_history else ""
+
+    # Step 1 — Run agentic pipeline for relevant patients (RAG retrieval)
+    knowledge = _build_rag_knowledge(user_prompt, orchestrator, repository)
+
+    # Step 2 — Build augmented system prompt (RAG augmentation)
+    base_system = _build_watsonx_chat_system_prompt(repository)
+    augmented_system = (
+        f"{base_system}\n\n"
+        f"--- RETRIEVED KNOWLEDGE (run-time agentic pipeline output) ---\n"
+        f"{knowledge}\n"
+        f"--- END OF RETRIEVED KNOWLEDGE ---\n\n"
+        "Answer the user's question using ONLY the retrieved knowledge above. "
+        "Do not call tools — all data has already been retrieved. "
+        "Be concise and clinically precise."
+    )
+
+    # Step 3 — Build message list with augmented context (RAG generation)
+    wx_messages: list[dict[str, Any]] = [
+        {"role": "system", "content": [{"type": "text", "text": augmented_system}]}
+    ]
+    # Include conversation history (excluding the last user message — added below cleanly)
+    for msg in chat_history[:-1]:
+        wx_messages.append({
+            "role": msg["role"],
+            "content": [{"type": "text", "text": msg["content"]}],
+        })
+    # Add current user message
+    wx_messages.append({
+        "role": "user",
+        "content": [{"type": "text", "text": user_prompt}],
+    })
+
+    # Single LLM call — no tool loop needed, knowledge already injected
+    raw = client.chat(messages=wx_messages, tools=None, tool_choice_option=None, max_tokens=1400, temperature=0.2)
+    choices = raw.get("choices", [])
+    if not choices:
+        return "No response from watsonx."
+    return extract_text(choices[0].get("message", {}).get("content", "")) or "No response from watsonx."
+
+
+def render_chat_interface(
+    execution_mode: str,
+    watsonx_orchestrator: Any,
+    config: "AppConfig",
+    repository: "DataRepository",
+    orchestrator: Any,
+) -> None:
+    st.subheader("Chat with the Healthcare AI Coordinator")
+    st.caption(
+        f"Mode: **{execution_mode}** — "
+        "RAG: agentic pipeline runs on every prompt to retrieve fresh care summaries."
+    )
+
+    if execution_mode == "Live watsonx tools" and watsonx_orchestrator is None:
+        st.warning("watsonx is not configured. Add WATSONX_APIKEY and WATSONX_PROJECT_ID to .env.")
+        return
+    if execution_mode == "Orchestrate REST API" and not config.orchestrate_endpoint:
+        st.warning("Orchestrate endpoint is not configured. Add ORCHESTRATE_INSTANCE_URL to .env.")
+        return
+
+    # --- Sample prompts by role ---
+    st.markdown("#### Sample prompts — click to send")
+    role_cols = st.columns(len(SAMPLE_PROMPTS))
+    for col, (role, prompts) in zip(role_cols, SAMPLE_PROMPTS.items()):
+        with col:
+            st.markdown(f"**{role}**")
+            for prompt_text in prompts:
+                btn_key = f"sp_{role}_{hash(prompt_text)}"
+                if st.button(prompt_text, key=btn_key, use_container_width=True):
+                    st.session_state["_chat_pending"] = prompt_text
+
+    st.divider()
+
+    chat_key = f"chat_msgs_{execution_mode}"
+    if chat_key not in st.session_state:
+        st.session_state[chat_key] = []
+
+    messages: list[dict[str, Any]] = st.session_state[chat_key]
+
+    # Render existing history
+    for msg in messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+        if msg.get("knowledge"):
+            with st.expander("Knowledge retrieved by agentic pipeline", expanded=False):
+                st.code(msg["knowledge"], language="text")
+
+    # Resolve input (sample button click or typed)
+    pending = st.session_state.pop("_chat_pending", None)
+    user_input = st.chat_input("Ask about patients, discharge plans, medications, vitals…")
+    prompt = pending or user_input
+
+    if prompt:
+        messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        knowledge_block: str = ""
+        reply: str = ""
+
+        # Step 1 — RAG retrieval (agentic pipeline)
+        relevant = _detect_relevant_patients(prompt, list(repository.patients.keys()))
+        with st.spinner(f"Running agentic pipeline for {len(relevant)} patient(s)…"):
+            knowledge_block = _build_rag_knowledge(prompt, orchestrator, repository)
+
+        # Step 2 — LLM generation grounded on retrieved knowledge
+        with st.chat_message("assistant"):
+            with st.spinner("Generating response…"):
+                if execution_mode == "Live watsonx tools":
+                    try:
+                        # Pass full history so far (including latest user message)
+                        reply = _run_watsonx_chat(
+                            watsonx_orchestrator, messages, repository, orchestrator
+                        )
+                    except Exception as exc:
+                        reply = f"watsonx error: {exc}"
+                else:  # Orchestrate REST API — prepend knowledge as context
+                    try:
+                        augmented_prompt = (
+                            f"REAL-TIME CARE KNOWLEDGE (retrieved by agentic pipeline):\n"
+                            f"{knowledge_block}\n\n"
+                            f"---\nUser question: {prompt}"
+                        )
+                        run_config = replace(
+                            config,
+                            orchestrate_bearer_token=st.session_state.get(
+                                "orchestrate_bearer_token", config.orchestrate_bearer_token
+                            ),
+                        )
+                        payload = invoke_via_api(run_config, augmented_prompt, poll_timeout_sec=45)
+                        refreshed = os.environ.get("ORCHESTRATE_BEARER_TOKEN")
+                        if refreshed and not st.session_state.get("orchestrate_bearer_token"):
+                            st.session_state["orchestrate_bearer_token"] = refreshed
+                        parsed = parse_orchestrate_payload(payload)
+                        run_status = str(parsed.get("run_status", "unknown")).lower()
+                        if run_status in {"failed", "cancelled"}:
+                            reply = f"Run {run_status}: {parsed.get('failure_reason', 'Unknown error.')}"
+                        else:
+                            reply = (
+                                clean_orchestrate_summary(parsed.get("final_message", ""))
+                                or "No response from Orchestrate."
+                            )
+                    except Exception as exc:
+                        reply = f"Orchestrate error: {exc}"
+
+            st.markdown(reply)
+            if knowledge_block:
+                with st.expander("Knowledge retrieved by agentic pipeline", expanded=False):
+                    st.code(knowledge_block, language="text")
+
+        messages.append({"role": "assistant", "content": reply, "knowledge": knowledge_block})
+        st.session_state[chat_key] = messages
+        st.rerun()
+
+    if messages:
+        if st.button("Clear chat history", key="clear_chat"):
+            st.session_state[chat_key] = []
+            st.rerun()
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Healthcare Multi-Agent Coordinator",
@@ -228,7 +1252,7 @@ def main() -> None:
         # --- NULL SESSION: not logged in at all ---
         if not user.is_logged_in:
             st.set_page_config(
-                page_title="Sign in — Healthcare Coordinator",
+                page_title="Sign in — AI Healthcare Coordinator",
                 page_icon=":hospital:",
                 layout="centered",
             ) if False else None  # page_config already set above; skip duplicate
@@ -266,14 +1290,18 @@ def main() -> None:
         # Authenticated user controls are rendered in the page header (top-right).
 
     orchestrator, repository = load_orchestrator()
+    _load_ui_content_from_yaml(repository)
+    _load_added_patients_from_yaml(repository)
+    _apply_added_patient_store(repository)
     watsonx_orchestrator = load_watsonx_orchestrator(repository)
     config = AppConfig.from_env()
     patients = repository.patients
     patient_options = {
         f"{record['patient_id']} - {record['name']}": record["patient_id"] for record in patients.values()
     }
+    has_patients = bool(patient_options)
 
-    st.title("Healthcare Multi-Agent Care Coordinator")
+    st.title("AI Healthcare Multi-Agent Care Coordinator")
     st.caption("Interactive demo for discharge translation, symptom monitoring, logistics coordination, and nurse escalation.")
 
     if auth_configured and current_user is not None and current_user.is_logged_in:
@@ -424,30 +1452,62 @@ def main() -> None:
         )
 
     with st.sidebar:
-        st.subheader("Case Setup")
-        selected_label = st.selectbox("Patient", list(patient_options.keys()))
-        patient_id = patient_options[selected_label]
-        patient = patients[patient_id]
-        discharge_plan = repository.discharge_plans[patient_id]
-        default_report = {
-            "PT-1001": "A little tired after walking, but no fever and breathing is normal.",
-            "PT-2002": "My leg is more swollen and I missed my antibiotic pickup.",
-            "PT-1002": "I feel short of breath and dizzy this morning.",
-            "PT-1003": "My knee wound looks clean and the pain is manageable, but I feel a little stiff when walking.",
-        }.get(patient_id, "")
-
-        symptom_report = st.text_area(
-            "Symptom report",
-            value=default_report,
-            height=140,
-            help="Describe what the patient or caregiver is reporting today.",
-        )
-        execution_mode = st.radio(
-            "Execution mode",
-            options=["Local deterministic", "Live watsonx tools", "Orchestrate REST API"],
+        app_mode = st.radio(
+            "App mode",
+            options=["Care Workflow", "Chat"],
             index=0,
-            help="Switch between local deterministic orchestration, direct watsonx tool-calling, or hosted Orchestrate API runs.",
+            horizontal=True,
+            help="Care Workflow: structured patient form. Chat: freeform conversation with the AI coordinator.",
         )
+        if app_mode == "Care Workflow":
+            add_col, manage_col = st.columns(2)
+            with add_col:
+                if st.button("Add New Patient", use_container_width=True):
+                    _open_add_patient_dialog(repository)
+            with manage_col:
+                if st.button("Edit/Delete Patient", use_container_width=True):
+                    st.session_state[_SHOW_MANAGE_PATIENTS_DIALOG_KEY] = True
+        st.divider()
+
+        st.subheader("Case Setup" if app_mode == "Care Workflow" else "Chat Setup")
+        if has_patients:
+            selected_label = st.selectbox("Patient", list(patient_options.keys()))
+            patient_id = patient_options[selected_label]
+            patient = patients[patient_id]
+            discharge_plan = repository.discharge_plans[patient_id]
+            default_report = _DEFAULT_SYMPTOM_REPORTS.get(patient_id, "")
+        else:
+            st.info("No patients available. Add a new patient to continue.")
+            selected_label = None
+            patient_id = ""
+            patient = None
+            discharge_plan = None
+            default_report = ""
+
+        if app_mode == "Care Workflow" and has_patients:
+            symptom_report = st.text_area(
+                "Symptom report",
+                value=default_report,
+                height=140,
+                help="Describe what the patient or caregiver is reporting today.",
+            )
+        else:
+            symptom_report = default_report  # not used in chat mode
+
+        if app_mode == "Care Workflow":
+            execution_mode = st.radio(
+                "Execution mode",
+                options=["Local deterministic", "Live watsonx tools", "Orchestrate REST API"],
+                index=0,
+                help="Switch between local deterministic orchestration, direct watsonx tool-calling, or hosted Orchestrate API runs.",
+            )
+        else:
+            execution_mode = st.radio(
+                "Execution mode",
+                options=["Live watsonx tools", "Orchestrate REST API"],
+                index=0,
+                help="Chat is supported for Live watsonx tools and Orchestrate REST API modes.",
+            )
         token_key = "orchestrate_bearer_token"
         env_token = os.environ.get("ORCHESTRATE_BEARER_TOKEN", "")
         if token_key not in st.session_state and env_token:
@@ -488,15 +1548,19 @@ def main() -> None:
                 st.code(active_token, language="text")
         else:
             st.caption("Token preview: `none`")
-        submitted = st.button("Run care coordination", type="primary", use_container_width=True)
+        if app_mode == "Care Workflow":
+            submitted = st.button("Run care coordination", type="primary", use_container_width=True)
+        else:
+            submitted = False
 
         st.markdown("### Engine Readiness")
         st.write(f"watsonx tools: {'Ready' if watsonx_orchestrator else 'Missing config'}")
         st.write(f"Orchestrate API: {'Ready' if config.orchestrate_endpoint else 'Missing endpoint'}")
 
-        st.markdown("### Patient Snapshot")
-        st.write(f"Literacy level: `{patient['literacy_level']}`")
-        st.write(discharge_plan["summary"])
+        if app_mode == "Care Workflow" and patient is not None and discharge_plan is not None:
+            st.markdown("### Patient Snapshot")
+            st.write(f"Literacy level: `{patient['literacy_level']}`")
+            st.write(discharge_plan["summary"])
         if watsonx_orchestrator is None:
             missing = ", ".join(config.missing_watsonx_fields())
             st.caption(f"watsonx disabled until these values exist in .env: {missing}")
@@ -504,6 +1568,11 @@ def main() -> None:
             st.caption("Orchestrate API disabled until ORCHESTRATE_API_ENDPOINT (or ORCHESTRATE_INSTANCE_URL) is set.")
         st.caption("Quick PowerShell launcher for Orchestrate mode:")
         st.code(r".\run_streamlit_orchestrate.local.ps1", language="powershell")
+
+    if st.session_state.get(_SHOW_MANAGE_PATIENTS_DIALOG_KEY):
+        # One-shot open guard: avoid reopening the dialog on unrelated reruns/clicks.
+        st.session_state[_SHOW_MANAGE_PATIENTS_DIALOG_KEY] = False
+        _open_manage_patients_dialog(repository)
 
     st.markdown(
         """
@@ -528,6 +1597,14 @@ def main() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+    if app_mode == "Chat":
+        render_chat_interface(execution_mode, watsonx_orchestrator, config, repository, orchestrator)
+        return
+
+    if not has_patients:
+        st.info("No patients available in Case Setup. Use Add New Patient or restore a patient via YAML data.")
+        return
 
     if not submitted:
         st.info("Choose a patient, adjust the symptom report if needed, and run the workflow to see the agents coordinate.")

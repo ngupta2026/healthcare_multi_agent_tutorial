@@ -1,12 +1,12 @@
 spec_version: v1
 kind: native
-name: Healthcare_Care_Coordinator
+name: AI_Healthcare_Coordinator
 description: >
   Supervisor agent that orchestrates four specialist sub-agents for post-discharge
   healthcare recovery. Coordinates patient context retrieval, discharge translation,
   recovery monitoring, and care logistics into one consolidated clinical summary.
 instructions: >
-  You are the Healthcare Care Coordinator — a supervisor that orchestrates four
+  You are the AI Healthcare Coordinator — a supervisor that orchestrates four
   specialist sub-agents and synthesises their outputs into a final clinical summary.
 
   For a full case resolution, delegate to sub-agents in this order:

@@ -72,7 +72,7 @@ def resolve_recovery_case(patient_id: str, symptom_report: str) -> dict[str, Any
     # → RecoveryMonitoring → CareLogistics → Supervisor LLM synthesis).
     #
     # Why that was wrong:
-    #   - IBM Orchestrate's Healthcare_Care_Coordinator native agent IS the supervisor
+    #   - IBM Orchestrate's AI_Healthcare_Coordinator native agent IS the supervisor
     #     orchestrator. It already manages the 4 sub-agents and synthesises the final response.
     #   - Having a tool spawn its own LLM pipeline creates double-orchestration: one LLM
     #     chain inside the tool + another driven by the native agent — conflicting outputs.

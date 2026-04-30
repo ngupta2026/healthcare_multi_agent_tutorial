@@ -228,7 +228,7 @@ def build_watsonx_payload_example(patient_id: str, symptom_report: str, runtime:
                 "content": [
                     {
                         "type": "text",
-                        "text": "You are a healthcare care orchestrator. Use tools before giving a patient-specific answer.",
+                        "text": "You are an AI healthcare orchestrator. Use tools before giving a patient-specific answer.",
                     }
                 ],
             },
