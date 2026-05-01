@@ -7,6 +7,14 @@ patients:
     care_plan_id: CP-3004
     pharmacy_plan_id: RX#-389545
     appointment_plan_id: AP-3004
+  PT-1001:
+    patient_id: PT-1001
+    name: Margaret Ellis
+    literacy_level: plain_language
+    discharge_plan_id: DP-1001
+    care_plan_id: CP-1001
+    pharmacy_plan_id: RX-1001
+    appointment_plan_id: AP-1001
 discharge_plans:
   PT-3004:
     discharge_plan_id: DP-3004
@@ -25,6 +33,18 @@ discharge_plans:
       '
     daily_routine: 'Condition at Discharge: Stable, breathing comfortably on room
       air.'
+  PT-1001:
+    discharge_plan_id: DP-1001
+    patient_id: PT-1001
+    summary: ' Discharged after heart failure stabilization with medication adjustment
+      and home monitoring.'
+    clinical_note: Take paracetamol 20 mg by mouth every morning. Check weight after
+      waking and before breakfast. If weight increases by more than 2 pounds in 24
+      hours, call doctor. Limit sodium to less than 2 grams daily. Mild fatigue can
+      occur for one week. Seek urgent care for chest pain, trouble breathing at rest,
+      fainting, or new confusion.
+    daily_routine: Wakes at 7:00 AM, eats breakfast at 8:00 AM, afternoon walk at
+      2:00 PM, bedtime at 9:30 PM.
 vitals:
   PT-3004:
     patient_id: PT-3004
@@ -33,6 +53,13 @@ vitals:
     temperature_f: 98.6
     systolic_bp: 120
     weight_delta_lb: 1.0
+  PT-1001:
+    patient_id: PT-1001
+    heart_rate: 96
+    oxygen_saturation: 95
+    temperature_f: 98.6
+    systolic_bp: 126
+    weight_delta_lb: 0.5
 pharmacy_status:
   PT-3004:
     pharmacy_plan_id: RX#-389545
@@ -43,6 +70,14 @@ pharmacy_status:
       status: ready_for_pickup
       delay_reason: logistic unavailability
       alternate_source: ''
+  PT-1001:
+    pharmacy_plan_id: RX-1001
+    patient_id: PT-1001
+    medications:
+    - name: furosemide 20 mg
+      status: ready_for_pickup
+      delay_reason: ''
+      alternate_source: ''
 appointments:
   PT-3004:
     appointment_plan_id: AP-3004
@@ -52,6 +87,15 @@ appointments:
       scheduled_at: Primary care physician in 1 week
       transportation_status: confirmed
       transportation_note: patient owns a personal car
+  PT-1001:
+    appointment_plan_id: AP-1001
+    patient_id: PT-1001
+    appointments:
+    - specialty: Cardiology
+      scheduled_at: '2026-04-15T10:30:00'
+      transportation_status: confirmed
+      transportation_note: Husband will drive to the clinic.
 symptom_reports:
   PT-3004: persistent headache and fever with cough.
+  PT-1001: A little tired after walking, but no fever and breathing is normal.
 deleted_patients: []

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from html import escape
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,35 @@ def severity_label(risk_status: str) -> tuple[str, str]:
     if risk_status == "watch_closely":
         return "Watch Closely", "warning"
     return "Routine", "success"
+
+
+_SEVERITY_PHRASE_PATTERN = re.compile(
+    r"\\b(immediate attention required|high severity|escalation|escalate|urgent|critical|high priority)\\b",
+    re.IGNORECASE,
+)
+
+
+def _highlight_severity_phrases(text: str) -> str:
+    raw = str(text or "")
+    if not raw:
+        return ""
+
+    fragments: list[str] = []
+    cursor = 0
+    for match in _SEVERITY_PHRASE_PATTERN.finditer(raw):
+        fragments.append(escape(raw[cursor:match.start()]))
+        fragments.append(f'<span class="severity-highlight">{escape(match.group(0))}</span>')
+        cursor = match.end()
+    fragments.append(escape(raw[cursor:]))
+    return "".join(fragments)
+
+
+def _write_highlighted_line(text: str, bullet: bool = False) -> None:
+    rendered = _highlight_severity_phrases(text)
+    if bullet:
+        st.markdown(f'<div class="severity-line">&bull; {rendered}</div>', unsafe_allow_html=True)
+        return
+    st.markdown(rendered, unsafe_allow_html=True)
 
 
 def build_orchestrate_prompt(patient_id: str, symptom_report: str) -> str:
@@ -786,7 +816,7 @@ def _open_add_patient_dialog(repository: "DataRepository") -> None:
                 bottom: 0;
                 z-index: 3;
                 padding-top: 0.35rem;
-                background: linear-gradient(to top, #ffffff 72%, rgba(255, 255, 255, 0));
+                background: linear-gradient(to top, #009db0 72%, rgba(0, 157, 176, 0));
             }
             </style>
             """,
@@ -824,7 +854,7 @@ def _open_manage_patients_dialog(repository: "DataRepository") -> None:
                 bottom: 0;
                 z-index: 3;
                 padding-top: 0.35rem;
-                background: linear-gradient(to top, #ffffff 72%, rgba(255, 255, 255, 0));
+                background: linear-gradient(to top, #009db0 72%, rgba(0, 157, 176, 0));
             }
             </style>
             """,
@@ -1304,6 +1334,84 @@ def main() -> None:
     st.title("AI Healthcare Multi-Agent Care Coordinator")
     st.caption("Interactive demo for discharge translation, symptom monitoring, logistics coordination, and nurse escalation.")
 
+    # ── Healthcare AI themed decorative banner (always visible) ───────────────
+    st.markdown(
+        """
+        <div class="hc-theme-banner">
+          <svg class="hc-banner-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 148" preserveAspectRatio="none">
+            <g stroke="rgba(0,198,215,0.10)" stroke-width="1">
+              <line x1="0" y1="37" x2="1200" y2="37"/>
+              <line x1="0" y1="74" x2="1200" y2="74"/>
+              <line x1="0" y1="111" x2="1200" y2="111"/>
+              <line x1="150" y1="0" x2="150" y2="148"/>
+              <line x1="300" y1="0" x2="300" y2="148"/>
+              <line x1="450" y1="0" x2="450" y2="148"/>
+              <line x1="600" y1="0" x2="600" y2="148"/>
+              <line x1="750" y1="0" x2="750" y2="148"/>
+              <line x1="900" y1="0" x2="900" y2="148"/>
+              <line x1="1050" y1="0" x2="1050" y2="148"/>
+            </g>
+            <polyline
+              points="0,74 80,74 100,74 115,20 130,128 145,40 160,108 175,74 260,74 290,74 305,30 318,118 330,55 343,95 356,74 440,74 480,74 495,18 510,130 525,38 540,110 555,74 640,74 680,74 695,22 710,126 725,42 738,106 751,74 840,74 880,74 895,26 910,122 925,46 938,102 951,74 1040,74 1080,74 1095,24 1110,124 1125,44 1138,104 1151,74 1200,74"
+              fill="none"
+              stroke="rgba(0,220,230,0.72)"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <g fill="rgba(0,198,215,0.15)">
+              <rect x="56" y="50" width="6" height="22" rx="2"/>
+              <rect x="48" y="58" width="22" height="6" rx="2"/>
+              <rect x="256" y="30" width="5" height="18" rx="2"/>
+              <rect x="249.5" y="36.5" width="18" height="5" rx="2"/>
+              <rect x="880" y="100" width="5" height="18" rx="2"/>
+              <rect x="873.5" y="106.5" width="18" height="5" rx="2"/>
+              <rect x="1100" y="50" width="6" height="22" rx="2"/>
+              <rect x="1092" y="58" width="22" height="6" rx="2"/>
+            </g>
+            <g fill="rgba(0,220,230,0.85)">
+              <circle cx="115" cy="20" r="3.5"/>
+              <circle cx="130" cy="128" r="3.5"/>
+              <circle cx="145" cy="40" r="3.5"/>
+              <circle cx="160" cy="108" r="3.5"/>
+              <circle cx="495" cy="18" r="3.5"/>
+              <circle cx="510" cy="130" r="3.5"/>
+              <circle cx="525" cy="38" r="3.5"/>
+              <circle cx="540" cy="110" r="3.5"/>
+              <circle cx="895" cy="26" r="3.5"/>
+              <circle cx="910" cy="122" r="3.5"/>
+              <circle cx="925" cy="46" r="3.5"/>
+              <circle cx="938" cy="102" r="3.5"/>
+            </g>
+            <g stroke="rgba(30,144,255,0.18)" stroke-width="1" fill="none">
+              <polygon points="1110,8 1128,18 1128,38 1110,48 1092,38 1092,18"/>
+              <polygon points="1146,8 1164,18 1164,38 1146,48 1128,38 1128,18"/>
+              <polygon points="1128,38 1146,48 1146,68 1128,78 1110,68 1110,48"/>
+              <polygon points="1164,38 1182,48 1182,68 1164,78 1146,68 1146,48"/>
+            </g>
+            <g stroke="rgba(0,198,215,0.22)" stroke-width="1.4" fill="none">
+              <path d="M28,10 Q42,37 28,64 Q14,91 28,118 Q42,145 28,148"/>
+              <path d="M42,10 Q28,37 42,64 Q56,91 42,118 Q28,145 42,148"/>
+              <line x1="28" y1="28" x2="42" y2="28" stroke="rgba(0,198,215,0.30)"/>
+              <line x1="28" y1="46" x2="42" y2="46" stroke="rgba(0,198,215,0.30)"/>
+              <line x1="28" y1="64" x2="42" y2="64" stroke="rgba(0,198,215,0.30)"/>
+              <line x1="28" y1="82" x2="42" y2="82" stroke="rgba(0,198,215,0.30)"/>
+              <line x1="28" y1="100" x2="42" y2="100" stroke="rgba(0,198,215,0.30)"/>
+              <line x1="28" y1="118" x2="42" y2="118" stroke="rgba(0,198,215,0.30)"/>
+            </g>
+            <g stroke="rgba(30,144,255,0.20)" stroke-width="1.2" fill="none">
+              <path d="M1190,20 L1185,20 L1185,60 L1175,60 L1175,100 L1190,100"/>
+              <circle cx="1185" cy="20" r="2.5" fill="rgba(30,144,255,0.40)"/>
+              <circle cx="1175" cy="60" r="2.5" fill="rgba(30,144,255,0.40)"/>
+              <circle cx="1185" cy="100" r="2.5" fill="rgba(30,144,255,0.40)"/>
+            </g>
+          </svg>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    # ─────────────────────────────────────────────────────────────────────────
+
     if auth_configured and current_user is not None and current_user.is_logged_in:
         # Handle sign-out via query param (triggered from the HTML tooltip link)
         if st.query_params.get("signout") == "1":
@@ -1574,25 +1682,233 @@ def main() -> None:
         st.session_state[_SHOW_MANAGE_PATIENTS_DIALOG_KEY] = False
         _open_manage_patients_dialog(repository)
 
+    # Load local background image as base64 data URL
+    import base64 as _b64, pathlib as _pl
+    _bg_path = _pl.Path(__file__).parent / "data" / "bg_healthcare.jpg"
+    _bg_data_url = ""
+    if _bg_path.exists():
+        _bg_data_url = "data:image/jpeg;base64," + _b64.b64encode(_bg_path.read_bytes()).decode()
+
     st.markdown(
-        """
+        f"""
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap');
-        html, body, [class*="css"] {
+        html, body, [class*="css"] {{
             font-family: 'Manrope', sans-serif;
-        }
-        .result-card {
-            border: 1px solid rgba(49, 51, 63, 0.2);
+        }}
+
+        /* ── Full-page image background theme ───────────────────────────────── */
+        .stApp,
+        [data-testid="stAppViewContainer"] {{
+            background: linear-gradient(160deg, #5b9db5 0%, #4d8fa6 40%, #3d7f96 70%, #2e6f86 100%) !important;
+        }}
+        [data-testid="stMain"] {{
+            background-image:
+                linear-gradient(rgba(10, 28, 50, 0.38), rgba(10, 28, 50, 0.38)),
+                url("{_bg_data_url}") !important;
+            background-size: cover !important;
+            background-position: center !important;
+            background-repeat: no-repeat !important;
+            background-attachment: fixed !important;
+        }}
+        [data-testid="stHeader"] {{
+            background: rgba(75, 130, 158, 0.92) !important;
+            border-bottom: 1px solid rgba(100, 180, 210, 0.25);
+        }}
+        [data-testid="stHeader"] * {{
+            color: #002a33 !important;
+        }}
+        [data-testid="stHeader"] button,
+        [data-testid="stHeader"] a {{
+            color: #002a33 !important;
+        }}
+        [data-testid="stSidebar"] {{
+            background: linear-gradient(180deg, #6a9eb8 0%, #5a8eaa 100%) !important;
+            border-right: 1px solid rgba(50, 90, 120, 0.25);
+        }}
+        [data-testid="stSidebar"] * {{
+            color: #0d2a3a !important;
+        }}
+        [data-testid="stSidebar"] .stSelectbox label,
+        [data-testid="stSidebar"] .stTextArea label,
+        [data-testid="stSidebar"] .stTextInput label,
+        [data-testid="stSidebar"] .stRadio label,
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span {{
+            color: #0d2a3a !important;
+        }}
+        /* Main content text — light for dark image overlay */
+        [data-testid="stMain"] h1,
+        [data-testid="stMain"] h2,
+        [data-testid="stMain"] h3,
+        [data-testid="stMain"] h4,
+        [data-testid="stMain"] p,
+        [data-testid="stMain"] span,
+        [data-testid="stMain"] li,
+        [data-testid="stMain"] label {{
+            color: #e8f4ff !important;
+        }}
+        [data-testid="stMain"] .stCaption,
+        [data-testid="stMain"] [data-testid="stCaptionContainer"] {{
+            color: #a8d8f0 !important;
+        }}
+        /* Input / select widgets */
+        [data-testid="stMain"] .stTextInput input,
+        [data-testid="stMain"] .stTextArea textarea,
+        [data-testid="stMain"] .stSelectbox > div > div,
+        [data-testid="stMain"] .stNumberInput input {{
+            background: rgba(0, 20, 40, 0.55) !important;
+            border: 1px solid rgba(0, 198, 215, 0.40) !important;
+            color: #e8f4ff !important;
+            border-radius: 10px;
+        }}
+        /* Tabs */
+        [data-testid="stMain"] button[data-baseweb="tab"] {{
+            color: #a8d8f0 !important;
+        }}
+        [data-testid="stMain"] button[data-baseweb="tab"][aria-selected="true"] {{
+            color: #00e0f0 !important;
+            border-bottom-color: #00e0f0 !important;
+        }}
+        /* Buttons */
+        [data-testid="stMain"] .stButton > button {{
+            background: linear-gradient(90deg, #006f80, #008899) !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(0, 198, 215, 0.50) !important;
+            border-radius: 10px !important;
+        }}
+        [data-testid="stMain"] .stButton > button:hover {{
+            background: linear-gradient(90deg, #00a0b8, #00c6d7) !important;
+            border-color: #00c6d7 !important;
+        }}
+        /* Info / warning / error boxes */
+        [data-testid="stMain"] [data-testid="stAlert"] {{
+            background: rgba(0, 20, 40, 0.60) !important;
+            border: 1px solid rgba(0, 198, 215, 0.30) !important;
+            color: #e8f4ff !important;
+            border-radius: 12px !important;
+        }}
+        /* Code blocks */
+        [data-testid="stMain"] pre, [data-testid="stMain"] code {{
+            background: rgba(0, 10, 25, 0.70) !important;
+            border: 1px solid rgba(0, 198, 215, 0.25) !important;
+            color: #00e0f0 !important;
+        }}
+        /* Expanders — header + content */
+        [data-testid="stMain"] details,
+        [data-testid="stMain"] [data-testid="stExpander"] {{
+            background: rgba(0, 20, 45, 0.75) !important;
+            border: 1px solid rgba(0, 198, 215, 0.30) !important;
+            border-radius: 12px !important;
+        }}
+        [data-testid="stMain"] details summary,
+        [data-testid="stMain"] .streamlit-expanderHeader,
+        [data-testid="stMain"] [data-testid="stExpanderToggleIcon"],
+        [data-testid="stMain"] [data-testid="stExpander"] summary {{
+            background: rgba(0, 30, 60, 0.85) !important;
+            color: #e8f4ff !important;
+            border-radius: 12px;
+        }}
+        [data-testid="stMain"] details summary p,
+        [data-testid="stMain"] details summary span,
+        [data-testid="stMain"] .streamlit-expanderHeader p,
+        [data-testid="stMain"] .streamlit-expanderHeader span {{
+            color: #e8f4ff !important;
+        }}
+        [data-testid="stMain"] details[open] summary {{
+            border-radius: 12px 12px 0 0;
+        }}
+        /* JSON viewer */
+        [data-testid="stMain"] [data-testid="stJson"],
+        [data-testid="stMain"] [data-testid="stJson"] > div,
+        [data-testid="stMain"] .stJson {{
+            background: rgba(0, 10, 28, 0.88) !important;
+            border-radius: 8px !important;
+            color: #a8d8f0 !important;
+        }}
+        [data-testid="stMain"] [data-testid="stJson"] * {{
+            color: #a8d8f0 !important;
+            background: transparent !important;
+        }}
+        /* Override any white backgrounds inside expander content */
+        [data-testid="stMain"] [data-testid="stExpanderDetails"],
+        [data-testid="stMain"] [data-testid="stExpanderDetails"] > div {{
+            background: rgba(0, 15, 38, 0.80) !important;
+            color: #e8f4ff !important;
+        }}
+        /* Metric tiles */
+        [data-testid="stMain"] [data-testid="stMetric"] {{
+            background: rgba(0, 20, 45, 0.55) !important;
+            border: 1px solid rgba(0, 198, 215, 0.25) !important;
+            border-radius: 12px !important;
+            padding: 0.6rem 1rem;
+        }}
+        /* Dividers */
+        hr {{
+            border-color: rgba(0, 198, 215, 0.20) !important;
+        }}
+        /* ─────────────────────────────────────────────────────────────────── */
+
+        .result-card {{
+            border: 1px solid rgba(0, 198, 215, 0.28);
             border-radius: 18px;
             padding: 1.1rem 1.2rem;
-            background: linear-gradient(140deg, rgba(233,245,255,1) 0%, rgba(255,252,244,1) 100%);
-        }
-        .small-label {
+            background: rgba(0, 20, 45, 0.58);
+            backdrop-filter: blur(10px);
+        }}
+        .result-card p, .result-card span, .result-card li {{
+            color: #e8f4ff !important;
+        }}
+        .small-label {{
             font-size: 0.8rem;
             letter-spacing: 0.06em;
             text-transform: uppercase;
-            color: #5b6472;
-        }
+            color: #a8d8f0 !important;
+        }}
+        .hc-theme-banner {{
+            position: relative;
+            width: 100%;
+            height: 148px;
+            border-radius: 20px;
+            overflow: hidden;
+            margin-bottom: 1.4rem;
+            background: linear-gradient(120deg, #050f2c 0%, #0a1f4e 30%, #0d3b7a 60%, #0a6ea6 85%, #00c6d7 100%);
+            box-shadow: 0 8px 32px rgba(0, 100, 200, 0.22);
+        }}
+        .hc-theme-banner::before {{
+            content: "";
+            position: absolute;
+            width: 320px; height: 320px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0,198,215,0.18) 0%, transparent 70%);
+            top: -110px; right: -60px;
+        }}
+        .hc-theme-banner::after {{
+            content: "";
+            position: absolute;
+            width: 200px; height: 200px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(30,144,255,0.22) 0%, transparent 70%);
+            bottom: -80px; left: 80px;
+        }}
+        .hc-banner-svg {{
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }}
+        .severity-highlight {{
+            color: #cc1d1d !important;
+            background: rgba(255, 87, 87, 0.22);
+            border: 1px solid rgba(255, 87, 87, 0.35);
+            border-radius: 6px;
+            padding: 0 0.24rem;
+            font-weight: 700;
+        }}
+        .severity-line {{
+            color: #e8f4ff;
+            margin: 0.2rem 0;
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -1665,10 +1981,10 @@ def main() -> None:
     with overview_col:
         st.markdown('<div class="result-card">', unsafe_allow_html=True)
         st.markdown('<div class="small-label">Recovery Summary</div>', unsafe_allow_html=True)
-        st.subheader(selected_summary)
+        st.markdown(f"### {_highlight_severity_phrases(selected_summary)}", unsafe_allow_html=True)
         st.caption(f"Execution mode: {selected_mode_badge}")
         st.write(f"Patient ID: `{result.patient_id}`")
-        st.write(f"Symptom report: {symptom_report}")
+        _write_highlighted_line(f"Symptom report: {symptom_report}")
         st.markdown("</div>", unsafe_allow_html=True)
 
     with status_col:
@@ -1694,33 +2010,33 @@ def main() -> None:
 
         st.subheader("Medication Schedule")
         for item in translator_output["medication_schedule"]:
-            st.write(f"- {item}")
+            _write_highlighted_line(item, bullet=True)
 
         st.subheader("Safety Tips")
         for item in translator_output["safety_tips"]:
-            st.write(f"- {item}")
+            _write_highlighted_line(item, bullet=True)
 
     with logistics_col:
         st.subheader("Risk Review")
         st.write(f"Triage level: `{monitoring_output['triage_level']}`")
-        st.write(monitoring_output["recommended_action"])
+        _write_highlighted_line(monitoring_output["recommended_action"])
         if monitoring_output["concerning_signals"]:
             for signal in monitoring_output["concerning_signals"]:
-                st.write(f"- {signal}")
+                _write_highlighted_line(signal, bullet=True)
         else:
             st.write("- No concerning signals were detected.")
 
         st.subheader("Logistics Coordination")
         for line in logistics_output["medication_status"]:
-            st.write(f"- {line}")
+            _write_highlighted_line(line, bullet=True)
         for line in logistics_output["appointment_status"]:
-            st.write(f"- {line}")
+            _write_highlighted_line(line, bullet=True)
         for line in logistics_output["resolved_actions"]:
-            st.write(f"- {line}")
+            _write_highlighted_line(line, bullet=True)
 
     with st.expander("Transparent reasoning log", expanded=True):
         for entry in result.reasoning_log:
-            st.write(f"- {entry}")
+            _write_highlighted_line(entry, bullet=True)
 
     if watsonx_result:
         with st.expander("watsonx Tool Trace", expanded=True):
