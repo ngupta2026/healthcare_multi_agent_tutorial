@@ -1246,7 +1246,35 @@ def render_chat_interface(
             st.rerun()
 
 
+def _bootstrap_streamlit_google_auth_from_env() -> None:
+    """Auto-generate .streamlit/secrets.toml from .env so st.login('google') works."""
+    AppConfig.from_env()  # loads .env into os.environ
+    redirect_uri  = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+    cookie_secret = os.getenv("GOOGLE_COOKIE_SECRET", "").strip()
+    client_id     = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    metadata_url  = os.getenv(
+        "GOOGLE_SERVER_METADATA_URL",
+        "https://accounts.google.com/.well-known/openid-configuration",
+    ).strip()
+    if not (redirect_uri and cookie_secret and client_id and client_secret):
+        return
+    secrets_dir = Path(".streamlit")
+    secrets_dir.mkdir(parents=True, exist_ok=True)
+    (secrets_dir / "secrets.toml").write_text(
+        "[auth]\n"
+        f'redirect_uri = "{redirect_uri}"\n'
+        f'cookie_secret = "{cookie_secret}"\n\n'
+        "[auth.google]\n"
+        f'client_id = "{client_id}"\n'
+        f'client_secret = "{client_secret}"\n'
+        f'server_metadata_url = "{metadata_url}"\n',
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
+    _bootstrap_streamlit_google_auth_from_env()
     st.set_page_config(
         page_title="Healthcare Multi-Agent Coordinator",
         page_icon=":hospital:",
