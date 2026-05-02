@@ -1360,7 +1360,7 @@ def main() -> None:
     has_patients = bool(patient_options)
 
     st.title("AI Healthcare Multi-Agent Care Coordinator")
-    st.caption("Interactive demo for discharge translation, symptom monitoring, logistics coordination, and nurse escalation.")
+    st.markdown('<p style="font-size:1.3125rem;color:#a8d8f0;margin-top:-0.4rem;margin-left:calc(1% + 5px);">Interactive demo for discharge translation, symptom monitoring, logistics coordination, and nurse escalation.</p>', unsafe_allow_html=True)
 
     # ── Healthcare AI themed decorative banner (always visible) ───────────────
     st.markdown(
@@ -1603,7 +1603,7 @@ def main() -> None:
             with manage_col:
                 if st.button("Edit/Delete Patient", use_container_width=True):
                     st.session_state[_SHOW_MANAGE_PATIENTS_DIALOG_KEY] = True
-        st.divider()
+        st.markdown('<div style="margin:8px 0 8px;border-top:1px solid rgba(13,42,58,0.25);"></div>', unsafe_allow_html=True)
 
         st.subheader("Case Setup" if app_mode == "Care Workflow" else "Chat Setup")
         if has_patients:
@@ -1644,6 +1644,11 @@ def main() -> None:
                 index=0,
                 help="Chat is supported for Live watsonx tools and Orchestrate REST API modes.",
             )
+        if app_mode == "Care Workflow":
+            submitted = st.button("▶ Run care coordination", type="primary", use_container_width=True)
+        else:
+            submitted = False
+
         token_key = "orchestrate_bearer_token"
         env_token = os.environ.get("ORCHESTRATE_BEARER_TOKEN", "")
         if token_key not in st.session_state and env_token:
@@ -1684,10 +1689,6 @@ def main() -> None:
                 st.code(active_token, language="text")
         else:
             st.caption("Token preview: `none`")
-        if app_mode == "Care Workflow":
-            submitted = st.button("Run care coordination", type="primary", use_container_width=True)
-        else:
-            submitted = False
 
         st.markdown("### Engine Readiness")
         st.write(f"watsonx tools: {'Ready' if watsonx_orchestrator else 'Missing config'}")
@@ -1725,6 +1726,14 @@ def main() -> None:
             font-family: 'Manrope', sans-serif;
         }}
 
+        /* ── Main content area top padding ──────────────────────────────────── */
+        [data-testid="stAppViewBlockContainer"],
+        section[data-testid="stMain"] > div:first-child {{
+            padding-top: 60px !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }}
+
         /* ── Full-page image background theme ───────────────────────────────── */
         .stApp,
         [data-testid="stAppViewContainer"] {{
@@ -1734,8 +1743,8 @@ def main() -> None:
             background-image:
                 linear-gradient(rgba(10, 28, 50, 0.38), rgba(10, 28, 50, 0.38)),
                 url("{_bg_data_url}") !important;
-            background-size: cover !important;
-            background-position: center !important;
+            background-size: 77% 80% !important;
+            background-position: 400px 320px !important;
             background-repeat: no-repeat !important;
             background-attachment: fixed !important;
         }}
@@ -1766,7 +1775,14 @@ def main() -> None:
             color: #0d2a3a !important;
         }}
         /* Main content text — light for dark image overlay */
-        [data-testid="stMain"] h1,
+        [data-testid="stMain"] h1 {{
+            color: #e8f4ff !important;
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+            margin-left: calc(1% + 5px) !important;
+            overflow: visible !important;
+            line-height: 1.2 !important;
+        }}
         [data-testid="stMain"] h2,
         [data-testid="stMain"] h3,
         [data-testid="stMain"] h4,
@@ -1809,12 +1825,39 @@ def main() -> None:
             background: linear-gradient(90deg, #00a0b8, #00c6d7) !important;
             border-color: #00c6d7 !important;
         }}
+        /* Sidebar primary "Run care coordination" button — WCAG 2.1 AA compliant (#0C5FA8 on white ~5.8:1) */
+        [data-testid="stSidebar"] .stButton > button[kind="primary"],
+        [data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {{
+            background: #0C5FA8 !important;
+            color: #ffffff !important;
+            border: none !important;
+            border-radius: 10px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.02em !important;
+        }}
+        [data-testid="stSidebar"] .stButton > button[kind="primary"]:hover,
+        [data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"]:hover {{
+            background: #0A4F8E !important;
+        }}
+        /* Sidebar radio — checked accent matches button colour */
+        [data-testid="stSidebar"] .stRadio [data-testid="stWidgetLabel"] + div label[data-selected="true"],
+        [data-testid="stSidebar"] input[type="radio"]:checked + div,
+        [data-testid="stSidebar"] .stRadio span[aria-checked="true"] {{
+            color: #0C5FA8 !important;
+        }}
+        [data-testid="stSidebar"] input[type="radio"]:checked {{
+            accent-color: #0C5FA8 !important;
+        }}
         /* Info / warning / error boxes */
         [data-testid="stMain"] [data-testid="stAlert"] {{
             background: rgba(0, 20, 40, 0.60) !important;
             border: 1px solid rgba(0, 198, 215, 0.30) !important;
             color: #e8f4ff !important;
-            border-radius: 12px !important;
+            border-radius: 0 !important;
+            margin-bottom: -10px !important;
+            width: calc(98% - 10px) !important;
+            margin-left: calc(1% + 5px) !important;
+            margin-right: calc(1% + 5px) !important;
         }}
         /* Code blocks */
         [data-testid="stMain"] pre, [data-testid="stMain"] code {{
@@ -1895,11 +1938,13 @@ def main() -> None:
         }}
         .hc-theme-banner {{
             position: relative;
-            width: 100%;
+            width: calc(98% - 10px);
+            margin-left: calc(1% + 5px);
+            margin-right: calc(1% + 5px);
             height: 148px;
             border-radius: 20px;
             overflow: hidden;
-            margin-bottom: 1.4rem;
+            margin-bottom: -16px;
             background: linear-gradient(120deg, #050f2c 0%, #0a1f4e 30%, #0d3b7a 60%, #0a6ea6 85%, #00c6d7 100%);
             box-shadow: 0 8px 32px rgba(0, 100, 200, 0.22);
         }}
